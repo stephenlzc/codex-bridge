@@ -1,0 +1,115 @@
+const DEFAULT_BASE_INSTRUCTIONS =
+  "You are Codex, a coding agent. Follow the developer and user instructions in the current session.";
+
+const REASONING_LEVELS = [
+  { effort: "low", description: "Fast responses with lighter reasoning" },
+  { effort: "medium", description: "Balanced speed and reasoning depth" },
+  { effort: "high", description: "Greater reasoning depth for complex tasks" },
+  { effort: "xhigh", description: "Extra high reasoning depth for complex tasks" },
+];
+
+const DEEPSEEK_REASONING_LEVELS = [
+  { effort: "none", description: "Disable reasoning" },
+  { effort: "high", description: "Use stronger reasoning" },
+  { effort: "max", description: "Use maximum reasoning" },
+];
+
+const BINARY_REASONING_LEVELS = [
+  { effort: "none", description: "Disable reasoning" },
+  { effort: "max", description: "Use maximum reasoning" },
+];
+
+export function buildModelCatalog(config) {
+  const defaults = config.catalog || {};
+  const entries = config.models
+    .slice()
+    .sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100))
+    .map((model, index) => modelCatalogEntry(model, defaults, index));
+
+  return { models: entries };
+}
+
+export function modelCatalogEntry(model, defaults = {}, index = 0) {
+  const contextWindow = Number(
+    model.contextWindow || defaults.contextWindow || 258400,
+  );
+  const effectiveContextWindowPercent = Number(
+    model.effectiveContextWindowPercent ||
+      defaults.effectiveContextWindowPercent ||
+      95,
+  );
+  const autoCompactPercent = Number(defaults.autoCompactPercent || 80);
+  const autoCompactTokenLimit = Math.floor(
+    contextWindow * (autoCompactPercent / 100),
+  );
+
+  const entry = {
+    slug: model.id,
+    display_name: model.displayName,
+    description: model.description || model.displayName,
+    shell_type: "shell_command",
+    visibility: "list",
+    supported_in_api: true,
+    priority: model.priority ?? index,
+    additional_speed_tiers: model.additionalSpeedTiers || [],
+    service_tiers: model.serviceTiers || [],
+    availability_nux: null,
+    upgrade: null,
+    base_instructions: model.baseInstructions || DEFAULT_BASE_INSTRUCTIONS,
+    supports_reasoning_summaries: false,
+    default_reasoning_summary: "auto",
+    support_verbosity: false,
+    default_verbosity: null,
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text",
+    truncation_policy: model.truncationPolicy || {
+      mode: "tokens",
+      limit: Math.min(contextWindow, 10000),
+    },
+    supports_parallel_tool_calls: true,
+    supports_image_detail_original: false,
+    context_window: contextWindow,
+    max_context_window: contextWindow,
+    effective_context_window_percent: effectiveContextWindowPercent,
+    auto_compact_token_limit: autoCompactTokenLimit,
+    experimental_supported_tools: [],
+    input_modalities: model.inputModalities || ["text"],
+    supports_search_tool: false,
+  };
+
+  const reasoning = reasoningSpecForModel(model);
+  entry.default_reasoning_level = model.defaultReasoningLevel || reasoning.defaultLevel;
+  entry.supported_reasoning_levels =
+    model.supportedReasoningLevels || reasoning.levels;
+
+  return entry;
+}
+
+export function openAiModelsList(config) {
+  return {
+    object: "list",
+    data: config.models.map((model) => ({
+      id: model.id,
+      object: "model",
+      created: 0,
+      owned_by: model.provider || "codex-router",
+    })),
+  };
+}
+
+function reasoningSpecForModel(model) {
+  const upstreamModel = String(model.model || model.id).toLowerCase();
+  if (upstreamModel.includes("deepseek")) {
+    return { defaultLevel: "high", levels: DEEPSEEK_REASONING_LEVELS };
+  }
+  if (
+    upstreamModel.includes("kimi") ||
+    upstreamModel.includes("moonshot") ||
+    upstreamModel.includes("qwen") ||
+    upstreamModel.includes("glm") ||
+    upstreamModel.includes("mimo")
+  ) {
+    return { defaultLevel: "max", levels: BINARY_REASONING_LEVELS };
+  }
+  return { defaultLevel: "medium", levels: REASONING_LEVELS };
+}

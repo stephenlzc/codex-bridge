@@ -1,0 +1,260 @@
+import { createHash } from "node:crypto";
+import { stringifyJson, tryParseJson } from "./json.js";
+
+const APPLY_PATCH = "apply_patch";
+const VALID_CHAT_TOOL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function buildToolContext(responseTools = []) {
+  const context = {
+    chatTools: [],
+    customToolNames: new Set(),
+    specialToolTypes: new Map(),
+    chatNameToResponseName: new Map(),
+    responseNameToChatName: new Map(),
+  };
+
+  for (const tool of responseTools || []) {
+    appendResponseTool(context, tool);
+  }
+
+  return context;
+}
+
+export function responseToolCallFromChat(call, context) {
+  const chatName = call?.function?.name || call?.name || "";
+  const responseName = context.chatNameToResponseName.get(chatName) || chatName;
+  const callId = call?.id || `call_${stableSuffix(responseName + Date.now())}`;
+  const args = call?.function?.arguments ?? call?.arguments ?? "";
+  const specialType = context.specialToolTypes.get(responseName);
+
+  if (specialType === "tool_search_call") {
+    return {
+      id: `ts_${stableSuffix(callId)}`,
+      type: "tool_search_call",
+      call_id: callId,
+      arguments: stringifyJson(args),
+      status: "completed",
+    };
+  }
+
+  if (responseName === APPLY_PATCH || context.customToolNames.has(responseName)) {
+    return {
+      id: `ctc_${stableSuffix(callId)}`,
+      type: "custom_tool_call",
+      call_id: callId,
+      name: responseName,
+      input: customInputFromArguments(args),
+      status: "completed",
+    };
+  }
+
+  return {
+    id: `fc_${stableSuffix(callId)}`,
+    type: "function_call",
+    call_id: callId,
+    name: responseName,
+    arguments: stringifyJson(args),
+    status: "completed",
+  };
+}
+
+export function chatToolCallFromResponseItem(item, context) {
+  const responseName = item.name || item.type || "tool";
+  const chatName = chatNameForResponseName(context, responseName);
+
+  if (item.type === "custom_tool_call") {
+    return {
+      id: item.call_id || item.id,
+      type: "function",
+      function: {
+        name: chatName,
+        arguments: JSON.stringify({ input: item.input || "" }),
+      },
+    };
+  }
+
+  if (item.type === "tool_search_call") {
+    return {
+      id: item.call_id || item.id,
+      type: "function",
+      function: {
+        name: chatNameForResponseName(context, "tool_search"),
+        arguments: stringifyJson(item.arguments || "{}"),
+      },
+    };
+  }
+
+  return {
+    id: item.call_id || item.id,
+    type: "function",
+    function: {
+      name: chatName,
+      arguments: stringifyJson(item.arguments || "{}"),
+    },
+  };
+}
+
+export function chatMessageFromToolOutput(item) {
+  return {
+    role: "tool",
+    tool_call_id: item.call_id || item.id,
+    content: stringifyJson(item.output ?? item.result ?? ""),
+  };
+}
+
+export function isResponseToolCallItem(item) {
+  return (
+    item &&
+    ["function_call", "custom_tool_call", "tool_search_call"].includes(item.type)
+  );
+}
+
+export function isResponseToolOutputItem(item) {
+  return (
+    item &&
+    [
+      "function_call_output",
+      "custom_tool_call_output",
+      "tool_search_call_output",
+      "tool_result",
+    ].includes(item.type)
+  );
+}
+
+function appendResponseTool(context, tool) {
+  if (!tool || typeof tool !== "object") {
+    return;
+  }
+
+  if (tool.type === "namespace") {
+    for (const inner of tool.tools || []) {
+      appendResponseTool(context, inner);
+    }
+    return;
+  }
+
+  if (tool.type === "web_search" || tool.type === "web_search_preview") {
+    return;
+  }
+
+  if (tool.type === "tool_search") {
+    const name = tool.name || "tool_search";
+    const chatName = chatNameForResponseName(context, name);
+    context.specialToolTypes.set(name, "tool_search_call");
+    context.chatTools.push({
+      type: "function",
+      function: {
+        name: chatName,
+        description: tool.description || "Search for deferred local tools.",
+        parameters: tool.parameters || {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+          },
+          required: ["query"],
+        },
+      },
+    });
+    return;
+  }
+
+  if (tool.type === "custom") {
+    const name = tool.name || "custom_tool";
+    const chatName = chatNameForResponseName(context, name);
+    context.customToolNames.add(name);
+    context.chatTools.push({
+      type: "function",
+      function: {
+        name: chatName,
+        description: customToolDescription(name, tool.description),
+        parameters: {
+          type: "object",
+          properties: {
+            input: {
+              type: "string",
+              description:
+                name === APPLY_PATCH
+                  ? "Exact V4A patch text beginning with *** Begin Patch and ending with *** End Patch."
+                  : "Free-form input passed verbatim to the tool.",
+            },
+          },
+          required: ["input"],
+        },
+      },
+    });
+    return;
+  }
+
+  const fn = normalizeFunctionTool(tool);
+  if (!fn?.name) {
+    return;
+  }
+  const chatName = chatNameForResponseName(context, fn.name);
+  context.chatTools.push({
+    type: "function",
+    function: {
+      name: chatName,
+      description: fn.description || "",
+      parameters: fn.parameters || {
+        type: "object",
+        properties: {},
+      },
+    },
+  });
+}
+
+function normalizeFunctionTool(tool) {
+  if (tool.type === "function" && tool.function) {
+    return tool.function;
+  }
+  if (tool.type === "function") {
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    };
+  }
+  return null;
+}
+
+function chatNameForResponseName(context, responseName) {
+  if (context.responseNameToChatName.has(responseName)) {
+    return context.responseNameToChatName.get(responseName);
+  }
+
+  let chatName = responseName;
+  if (!VALID_CHAT_TOOL_NAME.test(chatName)) {
+    const safe = chatName.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 52);
+    chatName = `${safe}_${stableSuffix(responseName)}`.slice(0, 64);
+  }
+
+  context.responseNameToChatName.set(responseName, chatName);
+  context.chatNameToResponseName.set(chatName, responseName);
+  return chatName;
+}
+
+function customInputFromArguments(args) {
+  if (typeof args !== "string") {
+    return stringifyJson(args);
+  }
+  const parsed = tryParseJson(args);
+  if (parsed && typeof parsed === "object" && typeof parsed.input === "string") {
+    return parsed.input;
+  }
+  return args;
+}
+
+function customToolDescription(name, description = "") {
+  if (name !== APPLY_PATCH) {
+    return description || "Run a Codex custom tool.";
+  }
+  return [
+    "Edit files by returning a V4A apply_patch payload.",
+    "Call this function with input set to the exact patch text.",
+    "The input must not be JSON inside the string; it must start with *** Begin Patch.",
+  ].join(" ");
+}
+
+function stableSuffix(value) {
+  return createHash("sha1").update(String(value)).digest("hex").slice(0, 10);
+}
