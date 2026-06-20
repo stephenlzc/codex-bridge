@@ -73,6 +73,7 @@ export function createRouterServer(config = loadConfig()) {
           await handleResponsesRequest(body, route, history, res, {
             requestId,
             clientAuth,
+            clientHeaders: req.headers,
           });
         } catch (error) {
           console.error(requestErrorLine(requestId, route, error));

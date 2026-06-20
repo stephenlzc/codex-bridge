@@ -15,7 +15,7 @@ export const PROVIDERS = [
     keyLabel: "使用 Codex/OpenAI 登录态",
     keyUrl: "https://chatgpt.com/codex",
     docsUrl: "https://developers.openai.com/codex",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
     authMode: "codex_openai",
     description: "GPT-5.5 / GPT-5.4 走 Codex 订阅，不需要 API Key。",
   },

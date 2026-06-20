@@ -308,6 +308,67 @@ test("server logs request-scoped upstream network errors", async () => {
   }
 });
 
+test("subscription scope errors explain that Codex login is not an API key", async () => {
+  const upstream = http.createServer(async (_req, res) => {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        error: {
+          message:
+            "You have insufficient permissions for this operation. Missing scopes: api.responses.write.",
+          type: "invalid_request_error",
+          code: "invalid_request_error",
+        },
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    clientAuth: {
+      allowOpenAiBearer: true,
+    },
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer codex-openai-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        input: "hello",
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 401);
+    assert.match(body.error.message, /Codex 登录态不能作为 OpenAI API Key 使用/);
+    assert.equal(body.error.code, "codex_subscription_missing_api_scope");
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 }

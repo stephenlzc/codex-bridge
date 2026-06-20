@@ -8,6 +8,28 @@ import {
 } from "./chat-to-responses.js";
 import { fetchInitWithProxy, proxyLogLabel } from "./proxy.js";
 
+const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
+
+const CODEX_PASSTHROUGH_HEADERS = [
+  "chatgpt-account-id",
+  "x-openai-fedramp",
+  "session-id",
+  "thread-id",
+  "x-client-request-id",
+  "x-codex-beta-features",
+  "x-codex-turn-state",
+  "x-codex-turn-metadata",
+  "x-codex-parent-thread-id",
+  "x-codex-window-id",
+  "x-codex-installation-id",
+  "x-oai-attestation",
+  "x-responsesapi-include-timing-metrics",
+  "x-openai-internal-codex-responses-lite",
+  "openai-beta",
+  "openai-organization",
+  "openai-project",
+];
+
 export class UpstreamHttpError extends Error {
   constructor(statusCode, bodyText, upstreamUrl) {
     super(`Upstream returned HTTP ${statusCode}`);
@@ -37,11 +59,13 @@ export async function proxyResponsesApi(requestBody, route, res, context = {}) {
   const payload = cloneJson(requestBody);
   payload.model = route.model;
 
-  const upstreamUrl = joinUpstreamUrl(route.baseUrl, "/responses");
+  const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
   logRoute(context, route, upstreamUrl);
   const upstream = await fetch(upstreamUrl, fetchInitWithProxy(upstreamUrl, {
     method: "POST",
-    headers: upstreamHeaders(route, context),
+    headers: upstreamHeaders(route, context, {
+      acceptEventStream: Boolean(payload.stream),
+    }),
     body: JSON.stringify(payload),
   }));
   logStatus(context, route, upstream.status);
@@ -123,6 +147,18 @@ export async function callJsonUpstream(upstreamUrl, route, payload, context = {}
 export function sendUpstreamError(res, error) {
   if (error instanceof UpstreamHttpError) {
     const parsed = tryParseJson(error.bodyText);
+    if (isMissingResponsesWriteScope(parsed, error.bodyText)) {
+      jsonResponse(
+        res,
+        error.statusCode,
+        openAiError(
+          "Codex 登录态不能作为 OpenAI API Key 使用：上游返回缺少 api.responses.write 权限，说明请求仍然打到了 public OpenAI API，或上游把 Codex 登录态当成 Platform API Key 校验。请更新 CodexBridge 配置，让 GPT 订阅模型走 ChatGPT Codex backend。",
+          error.statusCode,
+          "codex_subscription_missing_api_scope",
+        ),
+      );
+      return;
+    }
     jsonResponse(
       res,
       error.statusCode,
@@ -135,11 +171,32 @@ export function sendUpstreamError(res, error) {
   jsonResponse(res, statusCode, openAiError(error.message, statusCode));
 }
 
-function upstreamHeaders(route, context = {}) {
-  return {
+function isMissingResponsesWriteScope(parsedBody, rawBody) {
+  const message = [
+    parsedBody?.error?.message,
+    parsedBody?.message,
+    rawBody,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return /missing scopes?:\s*api\.responses\.write/i.test(message);
+}
+
+function upstreamHeaders(route, context = {}, options = {}) {
+  const headers = {
     "content-type": "application/json",
     authorization: `Bearer ${upstreamBearerToken(route, context)}`,
   };
+
+  if (options.acceptEventStream) {
+    headers.accept = "text/event-stream";
+  }
+
+  if (authModeForRoute(route) === "codex_openai") {
+    addCodexPassthroughHeaders(headers, context.clientHeaders);
+  }
+
+  return headers;
 }
 
 function upstreamBearerToken(route, context = {}) {
@@ -174,6 +231,45 @@ function filteredHeaders(headers) {
     result[key] = value;
   }
   return result;
+}
+
+function responsesBaseUrlForRoute(route) {
+  if (
+    authModeForRoute(route) === "codex_openai" &&
+    isPublicOpenAiApiBaseUrl(route.baseUrl)
+  ) {
+    return process.env.CODEXBRIDGE_CHATGPT_CODEX_BASE_URL || CHATGPT_CODEX_BASE_URL;
+  }
+  return route.baseUrl;
+}
+
+function isPublicOpenAiApiBaseUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.hostname.toLowerCase() === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+function addCodexPassthroughHeaders(target, source) {
+  for (const name of CODEX_PASSTHROUGH_HEADERS) {
+    const value = headerValue(source, name);
+    if (value) {
+      target[name] = value;
+    }
+  }
+}
+
+function headerValue(headers, name) {
+  if (!headers) {
+    return "";
+  }
+  const value = headers[name] || headers[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value.find(Boolean) || "";
+  }
+  return typeof value === "string" ? value : "";
 }
 
 function logRoute(context, route, upstreamUrl) {
