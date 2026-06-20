@@ -1,6 +1,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+  CODEX_MODEL_SLOTS,
+  MODEL_PRESETS,
+  PROVIDERS,
+  defaultSelectedModelIds,
+  providerById,
+} from "./presets.mjs";
+
+export {
+  CODEX_MODEL_SLOTS,
+  MODEL_PRESETS,
+  PROVIDERS,
+  defaultSelectedModelIds,
+} from "./presets.mjs";
 
 export const MODE_ALL_API = "all_api";
 export const MODE_HYBRID = "hybrid";
@@ -15,6 +29,14 @@ export function secretsPath(rootDir) {
 
 export function catalogPath(rootDir) {
   return path.join(rootDir, "model-catalog.json");
+}
+
+export function selectionPath(rootDir) {
+  return path.join(rootDir, "config", "model-selection.json");
+}
+
+export function customModelsPath(rootDir) {
+  return path.join(rootDir, "config", "custom-models.json");
 }
 
 export function codexConfigPath(homeDir = os.homedir()) {
@@ -49,6 +71,9 @@ export function readRouterConfig(rootDir) {
 }
 
 export function detectModeFromConfig(config) {
+  if (!config) {
+    return MODE_HYBRID;
+  }
   if (config?.clientAuth?.allowOpenAiBearer) {
     return MODE_HYBRID;
   }
@@ -74,17 +99,145 @@ export function loadSecrets(rootDir) {
 
 export function secretStatus(rootDir) {
   const secrets = loadSecrets(rootDir);
-  return {
-    FENNO_API_KEY: Boolean(secrets.FENNO_API_KEY),
-    DEEPSEEK_API_KEY: Boolean(secrets.DEEPSEEK_API_KEY),
-    MOONSHOT_API_KEY: Boolean(secrets.MOONSHOT_API_KEY),
-  };
+  const status = {};
+  for (const provider of providerCatalog(rootDir)) {
+    if (provider.keyEnv) {
+      status[provider.keyEnv] = Boolean(secrets[provider.keyEnv]);
+    }
+  }
+  return status;
 }
 
 export function envWithSecrets(rootDir, baseEnv = process.env) {
   return {
     ...baseEnv,
     ...loadSecrets(rootDir),
+  };
+}
+
+export function providerCatalog(rootDir) {
+  const customProviders = new Map();
+  for (const model of readCustomModels(rootDir)) {
+    if (!model.providerId || !model.keyEnv) {
+      continue;
+    }
+    if (!customProviders.has(model.providerId)) {
+      customProviders.set(model.providerId, {
+        id: model.providerId,
+        name: model.providerName || model.providerId,
+        shortName: model.providerName || "Custom",
+        keyEnv: model.keyEnv,
+        keyLabel: `${model.providerName || "Custom"} API Key`,
+        keyUrl: model.keyUrl || "",
+        docsUrl: model.docsUrl || "",
+        baseUrl: model.baseUrl,
+        authMode: model.authMode || "api_key",
+        description: "用户自定义 OpenAI-compatible Provider。",
+        custom: true,
+      });
+    }
+  }
+  return [...PROVIDERS, ...customProviders.values()];
+}
+
+export function modelCatalog(rootDir) {
+  return [...MODEL_PRESETS, ...readCustomModels(rootDir)];
+}
+
+export function readSelection(rootDir, mode = MODE_HYBRID) {
+  const saved = readJsonIfExists(selectionPath(rootDir), null);
+  if (Array.isArray(saved?.selectedModelIds)) {
+    return normalizeSelection(rootDir, saved.selectedModelIds, mode);
+  }
+  return defaultSelectedModelIds(mode);
+}
+
+export function saveSelection(rootDir, selectedModelIds, mode = MODE_HYBRID) {
+  const normalized = normalizeSelection(rootDir, selectedModelIds, mode);
+  const target = selectionPath(rootDir);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(
+    target,
+    `${JSON.stringify({ selectedModelIds: normalized }, null, 2)}\n`,
+    "utf8",
+  );
+  return normalized;
+}
+
+export function readCustomModels(rootDir) {
+  const saved = readJsonIfExists(customModelsPath(rootDir), []);
+  return Array.isArray(saved) ? saved : [];
+}
+
+export function saveCustomModel(rootDir, input) {
+  const model = normalizeCustomModel(input);
+  const models = readCustomModels(rootDir).filter(
+    (item) => item.presetId !== model.presetId,
+  );
+  models.push(model);
+  writeCustomModels(rootDir, models);
+  return model;
+}
+
+export function removeCustomModel(rootDir, presetId) {
+  const models = readCustomModels(rootDir).filter(
+    (model) => model.presetId !== presetId,
+  );
+  writeCustomModels(rootDir, models);
+  const selection = readSelection(rootDir).filter((id) => id !== presetId);
+  saveSelection(rootDir, selection.length ? selection : defaultSelectedModelIds(MODE_HYBRID));
+  return models;
+}
+
+export function writeRouterConfigFromSelection(rootDir, mode = MODE_HYBRID) {
+  const config = buildRouterConfigFromSelection(rootDir, mode);
+  const target = routerConfigPath(rootDir);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  return config;
+}
+
+export function buildRouterConfigFromSelection(rootDir, mode = MODE_HYBRID) {
+  const selectedModelIds = readSelection(rootDir, mode);
+  const models = modelCatalog(rootDir);
+  const selected = selectedModelIds.map((id) => {
+    const model = models.find((item) => item.presetId === id);
+    if (!model) {
+      throw new Error(`Selected model is not available: ${id}`);
+    }
+    return model;
+  });
+  if (selected.length === 0) {
+    throw new Error("Please select at least one model.");
+  }
+  if (selected.length > CODEX_MODEL_SLOTS.length) {
+    throw new Error(`Codex can show at most ${CODEX_MODEL_SLOTS.length} models.`);
+  }
+  if (
+    mode === MODE_ALL_API &&
+    selected.some((model) => model.authMode === "codex_openai")
+  ) {
+    throw new Error("全部 API 模式不能选择“GPT 订阅”模型，请改选 GPT API 或切换到混合模式。");
+  }
+
+  const routes = selected.map((model, index) =>
+    routeForSelectedModel(model, CODEX_MODEL_SLOTS[index], index),
+  );
+
+  return {
+    host: "127.0.0.1",
+    port: 15722,
+    authToken: "sk-local-codex-router",
+    clientAuth: {
+      allowOpenAiBearer: mode === MODE_HYBRID,
+    },
+    defaultModel: routes[0].id,
+    catalog: {
+      contextWindow: 258400,
+      effectiveContextWindowPercent: 95,
+      autoCompactPercent: 80,
+    },
+    models: routes,
   };
 }
 
@@ -141,6 +294,118 @@ export function applyCodexConfig({
 function toTomlPath(filePath) {
   return path.resolve(filePath).replaceAll("\\", "/");
 }
+
+function normalizeSelection(rootDir, selectedModelIds, mode) {
+  const available = new Set([
+    ...MODEL_PRESETS.map((model) => model.presetId),
+    ...defaultSelectedModelIds(mode),
+  ]);
+  const custom = readCustomModels(rootDir).map((model) => model.presetId);
+  for (const id of custom) {
+    available.add(id);
+  }
+  const unique = [];
+  for (const id of selectedModelIds || []) {
+    if (!id || unique.includes(id)) {
+      continue;
+    }
+    if (!available.has(id)) {
+      continue;
+    }
+    unique.push(id);
+  }
+  return unique.slice(0, CODEX_MODEL_SLOTS.length);
+}
+
+function routeForSelectedModel(model, slot, priority) {
+  const provider = providerById(model.providerId);
+  const route = {
+    id: slot.id,
+    slotLabel: slot.label,
+    sourcePresetId: model.presetId,
+    provider: model.providerId,
+    displayName: model.displayName,
+    description: model.description || `${model.displayName} via ${provider?.name || model.providerName || model.providerId}.`,
+    api: model.api,
+    baseUrl: model.baseUrl,
+    model: model.model,
+    authMode: model.authMode || provider?.authMode || "api_key",
+    contextWindow: model.contextWindow || 258400,
+    priority,
+  };
+  if (route.authMode === "api_key") {
+    route.apiKeyEnv = model.apiKeyEnv || model.keyEnv || provider?.keyEnv;
+  }
+  for (const key of [
+    "rpm",
+    "tpm",
+    "dropParams",
+    "inputModalities",
+    "defaultReasoningLevel",
+    "supportedReasoningLevels",
+  ]) {
+    if (model[key] !== undefined) {
+      route[key] = model[key];
+    }
+  }
+  return route;
+}
+
+function normalizeCustomModel(input = {}) {
+  const providerName = String(input.providerName || "Custom").trim();
+  const displayName = String(input.displayName || "").trim();
+  const model = String(input.model || "").trim();
+  const baseUrl = String(input.baseUrl || "").trim().replace(/\/+$/, "");
+  if (!displayName || !model || !baseUrl) {
+    throw new Error("自定义模型需要填写显示名称、真实模型名和 Base URL。");
+  }
+  const providerId = `custom-${slugify(providerName)}`;
+  const keyEnv = String(input.keyEnv || `${slugifyEnv(providerName)}_API_KEY`).trim();
+  return {
+    presetId: input.presetId || `custom-${slugify(providerName)}-${slugify(model)}`,
+    providerId,
+    providerName,
+    displayName,
+    description: String(input.description || `${displayName} via ${providerName}.`).trim(),
+    api: input.api === "responses" ? "responses" : "chat_completions",
+    baseUrl,
+    model,
+    authMode: "api_key",
+    apiKeyEnv: keyEnv,
+    keyEnv,
+    keyUrl: String(input.keyUrl || "").trim(),
+    docsUrl: String(input.docsUrl || "").trim(),
+    contextWindow: Number(input.contextWindow || 258400),
+    dropParams:
+      input.api === "responses" ? undefined : ["response_format", "parallel_tool_calls"],
+    custom: true,
+  };
+}
+
+function writeCustomModels(rootDir, models) {
+  const target = customModelsPath(rootDir);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${JSON.stringify(models, null, 2)}\n`, "utf8");
+}
+
+function slugify(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "model";
+}
+
+function slugifyEnv(value) {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48) || "CUSTOM";
+}
+
 
 function timestamp(date = new Date()) {
   return date

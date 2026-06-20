@@ -20,7 +20,7 @@
             <div class="brand-subtitle">多模型本地网关</div>
           </div>
         </div>
-        <nav class="nav-list" aria-label="Primary">
+        <nav class="nav-list" aria-label="主导航">
           <button class="nav-item active" data-section="dashboard">概览</button>
           <button class="nav-item" data-section="models">模型</button>
           <button class="nav-item" data-section="providers">密钥</button>
@@ -37,10 +37,12 @@
             <p>把 GPT、DeepSeek、Kimi 和更多模型放进同一个 Codex 模型栏。</p>
           </div>
           <div class="status-cluster">
-            <span class="status-pill" id="routerStatus">Router 未启动</span>
+            <span class="status-pill muted" id="routerStatus">Router 未启动</span>
             <span class="status-pill muted" id="modeStatus">读取中</span>
           </div>
         </header>
+
+        <div class="toast hidden" id="toast"></div>
 
         <section class="section-panel" id="dashboard">
           <div class="grid two">
@@ -48,17 +50,17 @@
               <div class="panel-header">
                 <div>
                   <h2>计费模式</h2>
-                  <p>选择用户最关心的模型费用来源。</p>
+                  <p>混合模式适合 GPT 走订阅、其他模型走 API；全部 API 模式适合统一走接口账户。</p>
                 </div>
               </div>
               <div class="mode-grid">
                 <button class="mode-card" data-mode="hybrid">
                   <span class="mode-title">推荐：GPT 走订阅</span>
-                  <span class="mode-copy">GPT-5.5 / GPT-5.4 使用 Codex/OpenAI 认证，DeepSeek/Kimi 使用各自 API Key。</span>
+                  <span class="mode-copy">GPT-5.5 / GPT-5.4 使用 Codex 登录态，DeepSeek/Kimi/其他模型使用各自 API Key。</span>
                 </button>
                 <button class="mode-card" data-mode="all_api">
                   <span class="mode-title">全部 API</span>
-                  <span class="mode-copy">所有模型都使用你配置的 API Key，适合统一走接口账户。</span>
+                  <span class="mode-copy">所有模型都使用你配置的 API Key，适合统一走中转或团队接口账户。</span>
                 </button>
               </div>
             </article>
@@ -67,11 +69,12 @@
               <div class="panel-header">
                 <div>
                   <h2>一键操作</h2>
-                  <p>按顺序点完这几个按钮，不需要手敲命令。</p>
+                  <p>按钮会显示执行结果；失败时会把具体错误写进日志。</p>
                 </div>
               </div>
               <div class="action-stack">
-                <button class="primary-button" id="saveSecrets">保存 API Key</button>
+                <button class="primary-button" id="saveSecrets">保存当前密钥</button>
+                <button class="plain-button" id="saveModelSelection">保存模型选择</button>
                 <button class="plain-button" id="generateCatalog">生成模型目录</button>
                 <button class="plain-button" id="applyCodex">写入 Codex 配置</button>
                 <div class="split-actions">
@@ -84,12 +87,12 @@
 
           <div class="grid three metric-row">
             <article class="metric">
-              <span class="metric-label">项目目录</span>
+              <span class="metric-label">数据目录</span>
               <strong id="rootDir">-</strong>
             </article>
             <article class="metric">
-              <span class="metric-label">模型数量</span>
-              <strong id="modelCount">0</strong>
+              <span class="metric-label">Codex 当前显示</span>
+              <strong><span id="selectedCount">0</span>/<span id="maxModels">5</span></strong>
             </article>
             <article class="metric">
               <span class="metric-label">密钥状态</span>
@@ -102,12 +105,37 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <h2>模型栏预览</h2>
-                <p>这里显示的就是 Codex 模型栏会看到的模型。</p>
+                <h2>模型栏选择</h2>
+                <p>Codex 模型栏最多显示 5 个。这里勾选的顺序会映射到 Codex 的 5 个槽位。</p>
               </div>
-              <button class="ghost-button" id="openConfigFolder">打开配置目录</button>
+              <div class="header-actions">
+                <button class="primary-button small" id="saveModelSelectionPanel">保存选择</button>
+                <button class="ghost-button light small" id="openConfigFolder">打开配置目录</button>
+              </div>
             </div>
-            <div class="model-table" id="modelTable"></div>
+            <div class="selection-strip" id="selectedModels"></div>
+            <div class="model-pool" id="modelPool"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>添加自定义模型</h2>
+                <p>支持 OpenAI-compatible 的 Responses 或 Chat Completions 接口。</p>
+              </div>
+            </div>
+            <form class="custom-form" id="customModelForm">
+              <input id="customProviderName" placeholder="Provider 名称，例如 My API" />
+              <input id="customDisplayName" placeholder="Codex 显示名，例如 My Coder" />
+              <input id="customModelName" placeholder="真实模型名，例如 my-coder-v1" />
+              <input id="customBaseUrl" placeholder="Base URL，例如 https://api.example.com/v1" />
+              <input id="customKeyUrl" placeholder="获取 Key 链接，可选" />
+              <select id="customApiType">
+                <option value="chat_completions">Chat Completions</option>
+                <option value="responses">Responses</option>
+              </select>
+              <button class="primary-button" type="submit">添加模型</button>
+            </form>
           </article>
         </section>
 
@@ -116,23 +144,10 @@
             <div class="panel-header">
               <div>
                 <h2>API Key</h2>
-                <p>密钥只保存在本机 `config/secrets.local.json`，不会提交到 Git。</p>
+                <p>密钥只保存在本机 CodexBridgeData/config/secrets.local.json，不会提交到 Git。</p>
               </div>
             </div>
-            <div class="form-grid">
-              <label>
-                <span>GPT API Key</span>
-                <input id="fennoKey" type="password" placeholder="全部 API 模式才需要" />
-              </label>
-              <label>
-                <span>DeepSeek API Key</span>
-                <input id="deepseekKey" type="password" placeholder="sk-..." />
-              </label>
-              <label>
-                <span>Kimi / Moonshot API Key</span>
-                <input id="moonshotKey" type="password" placeholder="sk-..." />
-              </label>
-            </div>
+            <div class="provider-grid" id="providerGrid"></div>
           </article>
         </section>
 
@@ -141,9 +156,9 @@
             <div class="panel-header">
               <div>
                 <h2>Codex 接入</h2>
-                <p>写入前会自动备份原来的 `%USERPROFILE%\.codex\config.toml`。</p>
+                <p>写入前会自动备份原来的 %USERPROFILE%\.codex\config.toml。</p>
               </div>
-              <button class="ghost-button" id="openCodexFolder">打开 Codex 目录</button>
+              <button class="ghost-button light" id="openCodexFolder">打开 Codex 目录</button>
             </div>
             <div class="notice">
               混合模式会写入 <code>requires_openai_auth = true</code>。全部 API 模式会写入本地 router token。
@@ -156,7 +171,7 @@
             <div class="panel-header">
               <div>
                 <h2>实时日志</h2>
-                <p>确认请求实际走到了哪个 provider、哪个模型。</p>
+                <p>确认请求实际走到哪个 provider、哪个真实模型，以及按钮执行结果。</p>
               </div>
             </div>
             <pre id="logOutput"></pre>
@@ -167,4 +182,3 @@
     <script src="./app.js"></script>
   </body>
 </html>
-

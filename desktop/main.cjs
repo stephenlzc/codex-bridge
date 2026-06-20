@@ -4,9 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const appRootDir = path.resolve(__dirname, "..");
-const dataRootDir = app.isPackaged
+const dataRootDir = process.env.CODEXBRIDGE_DATA_DIR || (app.isPackaged
   ? path.join(path.dirname(process.execPath), "CodexBridgeData")
-  : appRootDir;
+  : appRootDir);
 const runtimeLogPath = path.join(dataRootDir, "logs", "desktop-runtime.log");
 let settingsPromise;
 let mainWindow;
@@ -125,6 +125,12 @@ ipcMain.handle("state:get", async () => {
     routerRunning: Boolean(routerProcess),
     configExists: Boolean(config),
     models: config?.models || [],
+    providers: settings.providerCatalog(dataRootDir),
+    modelPresets: settings.modelCatalog(dataRootDir),
+    selectedModelIds: settings.readSelection(dataRootDir, mode),
+    maxModels: settings.CODEX_MODEL_SLOTS?.length || 5,
+    modelSlots: settings.CODEX_MODEL_SLOTS || [],
+    customModels: settings.readCustomModels(dataRootDir),
     secretStatus: settings.secretStatus(dataRootDir),
     logs: logLines,
   };
@@ -132,20 +138,53 @@ ipcMain.handle("state:get", async () => {
 
 ipcMain.handle("mode:select", async (_event, mode) => {
   const settings = await loadSettings();
-  settings.ensureRouterConfig(dataRootDir, mode, appRootDir);
+  settings.saveSelection(dataRootDir, settings.defaultSelectedModelIds(mode), mode);
+  settings.writeRouterConfigFromSelection(dataRootDir, mode);
   appendLog(`Selected ${mode === settings.MODE_HYBRID ? "Hybrid" : "All API"} mode.`);
-  return ipcMain.emit ? getStatePayload(settings) : null;
+  broadcastState();
+  return getStatePayload(settings);
 });
 
 ipcMain.handle("secrets:save", async (_event, secrets) => {
   const settings = await loadSettings();
   const saved = settings.saveSecrets(dataRootDir, secrets);
   appendLog(`Saved API key settings: ${Object.keys(saved).join(", ") || "none"}.`);
+  broadcastState();
   return settings.secretStatus(dataRootDir);
+});
+
+ipcMain.handle("models:saveSelection", async (_event, selectedModelIds) => {
+  const settings = await loadSettings();
+  const config = settings.readRouterConfig(dataRootDir);
+  const mode = settings.detectModeFromConfig(config);
+  const saved = settings.saveSelection(dataRootDir, selectedModelIds, mode);
+  settings.writeRouterConfigFromSelection(dataRootDir, mode);
+  appendLog(`Saved model selection: ${saved.join(", ")}.`);
+  broadcastState();
+  return getStatePayload(settings);
+});
+
+ipcMain.handle("customModel:save", async (_event, model) => {
+  const settings = await loadSettings();
+  const saved = settings.saveCustomModel(dataRootDir, model);
+  appendLog(`Saved custom model: ${saved.displayName}.`);
+  broadcastState();
+  return saved;
+});
+
+ipcMain.handle("customModel:remove", async (_event, presetId) => {
+  const settings = await loadSettings();
+  settings.removeCustomModel(dataRootDir, presetId);
+  appendLog(`Removed custom model: ${presetId}.`);
+  broadcastState();
+  return getStatePayload(settings);
 });
 
 ipcMain.handle("catalog:generate", async () => {
   const settings = await loadSettings();
+  const config = settings.readRouterConfig(dataRootDir);
+  const mode = settings.detectModeFromConfig(config);
+  settings.writeRouterConfigFromSelection(dataRootDir, mode);
   const result = await runNodeScript([
     scriptPath("scripts/generate-catalog.js"),
     settings.catalogPath(dataRootDir),
@@ -156,8 +195,9 @@ ipcMain.handle("catalog:generate", async () => {
 
 ipcMain.handle("codex:apply", async () => {
   const settings = await loadSettings();
-  const config = settings.readRouterConfig(dataRootDir);
+  let config = settings.readRouterConfig(dataRootDir);
   const mode = settings.detectModeFromConfig(config);
+  config = settings.writeRouterConfigFromSelection(dataRootDir, mode);
   const result = settings.applyCodexConfig({
     rootDir: dataRootDir,
     mode,
@@ -176,6 +216,9 @@ ipcMain.handle("router:start", async () => {
   }
 
   const settings = await loadSettings();
+  const config = settings.readRouterConfig(dataRootDir);
+  const mode = settings.detectModeFromConfig(config);
+  settings.writeRouterConfigFromSelection(dataRootDir, mode);
   const nodePath = nodeExecutable();
   routerProcess = spawn(nodePath, [scriptPath("src/server.js")], {
     cwd: appRootDir,
@@ -217,6 +260,15 @@ ipcMain.handle("folder:open", async (_event, target) => {
 
 ipcMain.handle("github:open", async () => {
   await shell.openExternal("https://github.com/wangzhezbz/codex-bridge");
+  return { ok: true };
+});
+
+ipcMain.handle("external:open", async (_event, url) => {
+  const target = String(url || "");
+  if (!/^https?:\/\//i.test(target)) {
+    throw new Error("Only http(s) links can be opened.");
+  }
+  await shell.openExternal(target);
   return { ok: true };
 });
 
@@ -319,14 +371,21 @@ async function broadcastState() {
 
 async function getStatePayload(settings) {
   const config = settings.readRouterConfig(dataRootDir);
+  const mode = settings.detectModeFromConfig(config);
   return {
     rootDir: dataRootDir,
     appRootDir,
     packaged: app.isPackaged,
-    mode: settings.detectModeFromConfig(config),
+    mode,
     routerRunning: Boolean(routerProcess),
     configExists: Boolean(config),
     models: config?.models || [],
+    providers: settings.providerCatalog(dataRootDir),
+    modelPresets: settings.modelCatalog(dataRootDir),
+    selectedModelIds: settings.readSelection(dataRootDir, mode),
+    maxModels: settings.CODEX_MODEL_SLOTS?.length || 5,
+    modelSlots: settings.CODEX_MODEL_SLOTS || [],
+    customModels: settings.readCustomModels(dataRootDir),
     secretStatus: settings.secretStatus(dataRootDir),
     logs: logLines,
   };

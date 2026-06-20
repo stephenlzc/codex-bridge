@@ -7,9 +7,12 @@ import {
   MODE_ALL_API,
   MODE_HYBRID,
   applyCodexConfig,
+  buildRouterConfigFromSelection,
   buildCodexToml,
   detectModeFromConfig,
   ensureRouterConfig,
+  saveCustomModel,
+  saveSelection,
   saveSecrets,
   secretStatus,
 } from "../desktop/settings.mjs";
@@ -54,9 +57,14 @@ test("saveSecrets records only non-empty values", () => {
   });
 
   assert.deepEqual(secretStatus(rootDir), {
+    DASHSCOPE_API_KEY: false,
     FENNO_API_KEY: true,
     DEEPSEEK_API_KEY: false,
     MOONSHOT_API_KEY: true,
+    OPENAI_API_KEY: false,
+    OPENROUTER_API_KEY: false,
+    SILICONFLOW_API_KEY: false,
+    ZHIPUAI_API_KEY: false,
   });
 
   saveSecrets(rootDir, {
@@ -66,10 +74,59 @@ test("saveSecrets records only non-empty values", () => {
   });
 
   assert.deepEqual(secretStatus(rootDir), {
+    DASHSCOPE_API_KEY: false,
     FENNO_API_KEY: true,
     DEEPSEEK_API_KEY: true,
     MOONSHOT_API_KEY: true,
+    OPENAI_API_KEY: false,
+    OPENROUTER_API_KEY: false,
+    SILICONFLOW_API_KEY: false,
+    ZHIPUAI_API_KEY: false,
   });
+});
+
+test("buildRouterConfigFromSelection maps selected models into five Codex slots", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, [
+    "codex-gpt-5-5",
+    "codex-gpt-5-4",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash",
+    "kimi-k2-7-code",
+    "qwen-plus",
+  ]);
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.equal(config.models.length, 5);
+  assert.deepEqual(config.models.map((model) => model.id), [
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5.2",
+  ]);
+  assert.equal(config.models[2].displayName, "DeepSeek V4 Pro");
+  assert.equal(config.models[4].displayName, "Kimi K2.7 Code");
+});
+
+test("custom models can be saved and routed with their own API key env", () => {
+  const rootDir = makeTempProject();
+  const custom = saveCustomModel(rootDir, {
+    providerName: "My Provider",
+    displayName: "My Coder",
+    model: "my-coder-v1",
+    baseUrl: "https://api.example.com/v1",
+    api: "chat_completions",
+  });
+  saveSelection(rootDir, [custom.presetId]);
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.equal(config.models.length, 1);
+  assert.equal(config.models[0].id, "gpt-5.5");
+  assert.equal(config.models[0].displayName, "My Coder");
+  assert.equal(config.models[0].apiKeyEnv, "MY_PROVIDER_API_KEY");
 });
 
 test("ensureRouterConfig copies the selected example", () => {
