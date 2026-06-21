@@ -442,6 +442,7 @@ function normalizeCustomModel(input = {}) {
     keyUrl: String(input.keyUrl || "").trim(),
     docsUrl: String(input.docsUrl || "").trim(),
     contextWindow: Number(input.contextWindow || 258400),
+    inputModalities: normalizeInputModalities(input.inputModalities),
     dropParams:
       input.api === "responses" ? undefined : ["response_format", "parallel_tool_calls"],
     custom: true,
@@ -472,6 +473,20 @@ function slugifyEnv(value) {
     .slice(0, 48) || "CUSTOM";
 }
 
+function normalizeInputModalities(value) {
+  const requested = Array.isArray(value) && value.length ? value : ["text", "image"];
+  const normalized = [];
+  for (const modality of requested) {
+    if (!["text", "image"].includes(modality) || normalized.includes(modality)) {
+      continue;
+    }
+    normalized.push(modality);
+  }
+  if (!normalized.includes("text")) {
+    normalized.unshift("text");
+  }
+  return normalized;
+}
 
 function timestamp(date = new Date()) {
   return date

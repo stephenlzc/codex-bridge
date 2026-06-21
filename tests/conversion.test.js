@@ -98,6 +98,93 @@ test("gpt responses catalog entries allow image input", () => {
   assert.equal(catalog.models[0].supports_image_detail_original, true);
 });
 
+test("chat catalog entries with image modality allow image input", () => {
+  const catalog = buildModelCatalog({
+    models: [
+      {
+        id: "gpt-5.2",
+        displayName: "Kimi K2.7 Code",
+        api: "chat_completions",
+        baseUrl: "https://api.moonshot.cn/v1",
+        model: "kimi-k2.7-code",
+        inputModalities: ["text", "image"],
+      },
+      {
+        id: "gpt-5.3-codex",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: "https://api.deepseek.com/v1",
+        model: "deepseek-v4-pro",
+      },
+    ],
+  });
+
+  assert.deepEqual(catalog.models[0].input_modalities, ["text", "image"]);
+  assert.equal(catalog.models[0].supports_image_detail_original, true);
+  assert.deepEqual(catalog.models[1].input_modalities, ["text"]);
+  assert.equal(catalog.models[1].supports_image_detail_original, false);
+});
+
+test("chat conversion preserves image_url content arrays", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "describe this image" },
+            {
+              type: "input_image",
+              image_url: "data:image/png;base64,abc123",
+              detail: "high",
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.deepEqual(converted.body.messages.at(-1).content, [
+    { type: "text", text: "describe this image" },
+    {
+      type: "image_url",
+      image_url: {
+        url: "data:image/png;base64,abc123",
+        detail: "high",
+      },
+    },
+  ]);
+});
+
+test("chat conversion keeps file inputs visible when chat provider cannot forward them", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this file" },
+            {
+              type: "input_file",
+              filename: "brief.pdf",
+              file_data: "data:application/pdf;base64,abc123",
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.equal(
+    converted.body.messages.at(-1).content,
+    "summarize this file\n[file input not forwarded to chat provider: brief.pdf]",
+  );
+});
+
 test("hybrid auth modes validate and default to api_key", () => {
   const config = {
     models: [

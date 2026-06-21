@@ -141,6 +141,19 @@ test("model presets include extra domestic coding and general models", () => {
   assert.ok(presetIds.has("doubao-seed-1-8"));
 });
 
+test("vision-capable presets advertise image input and text-only presets stay text-only", () => {
+  const byId = new Map(MODEL_PRESETS.map((model) => [model.presetId, model]));
+
+  assert.deepEqual(byId.get("kimi-k2-7-code")?.inputModalities, ["text", "image"]);
+  assert.deepEqual(byId.get("kimi-k2-6")?.inputModalities, ["text", "image"]);
+  assert.deepEqual(byId.get("xiaomi-mimo-v2-5-pro")?.inputModalities, ["text", "image"]);
+  assert.deepEqual(byId.get("minimax-m3")?.inputModalities, ["text", "image"]);
+  assert.deepEqual(byId.get("qwen3-vl-plus")?.inputModalities, ["text", "image"]);
+  assert.deepEqual(byId.get("glm-4-6v")?.inputModalities, ["text", "image"]);
+  assert.equal(byId.get("deepseek-v4-pro")?.inputModalities, undefined);
+  assert.equal(byId.get("qwen3-coder-plus")?.inputModalities, undefined);
+});
+
 test("built-in catalog does not recommend the private Fenno GPT provider", () => {
   const providers = providerCatalog(makeTempProject());
   const providerIds = new Set(providers.map((provider) => provider.id));
@@ -239,6 +252,7 @@ test("custom models can be saved and routed with their own API key env", () => {
   assert.equal(config.models[0].id, "gpt-5.5");
   assert.equal(config.models[0].displayName, "My Coder");
   assert.equal(config.models[0].apiKeyEnv, "MY_PROVIDER_API_KEY");
+  assert.deepEqual(config.models[0].inputModalities, ["text", "image"]);
 });
 
 test("ensureRouterConfig copies the selected example", () => {

@@ -192,20 +192,20 @@ export const MODEL_PRESETS = [
   route("deepseek-r1", "deepseek", "DeepSeek R1", "deepseek-reasoner", "chat_completions", 64000, {
     dropParams: ["response_format", "parallel_tool_calls"],
   }),
-  route("kimi-k2-7-code", "kimi", "Kimi K2.7 Code", "kimi-k2.7-code", "chat_completions", 258400, {
+  route("kimi-k2-7-code", "kimi", "Kimi K2.7 Code", "kimi-k2.7-code", "chat_completions", 258400, imageInput({
     rpm: 6,
     dropParams: ["response_format", "parallel_tool_calls"],
-  }),
-  route("kimi-k2-6", "kimi", "Kimi K2.6", "kimi-k2.6", "chat_completions", 258400, {
+  })),
+  route("kimi-k2-6", "kimi", "Kimi K2.6", "kimi-k2.6", "chat_completions", 258400, imageInput({
     rpm: 6,
     dropParams: ["response_format", "parallel_tool_calls"],
-  }),
-  route("xiaomi-mimo-v2-5-pro", "xiaomi", "MiMo V2.5 Pro", "mimo-v2.5-pro", "chat_completions", 258400, {
+  })),
+  route("xiaomi-mimo-v2-5-pro", "xiaomi", "MiMo V2.5 Pro", "mimo-v2.5-pro", "chat_completions", 258400, imageInput({
     dropParams: ["response_format", "parallel_tool_calls"],
-  }),
-  route("minimax-m3", "minimax", "MiniMax M3", "MiniMax-M3", "chat_completions", 204800, {
+  })),
+  route("minimax-m3", "minimax", "MiniMax M3", "MiniMax-M3", "chat_completions", 204800, imageInput({
     dropParams: ["response_format", "parallel_tool_calls"],
-  }),
+  })),
   route("minimax-m2-7", "minimax", "MiniMax M2.7", "MiniMax-M2.7", "chat_completions", 204800, {
     dropParams: ["response_format", "parallel_tool_calls"],
   }),
@@ -233,6 +233,12 @@ export const MODEL_PRESETS = [
   route("qwen3-coder-plus", "qwen", "Qwen3 Coder Plus", "qwen3-coder-plus", "chat_completions", 258400, {
     dropParams: ["parallel_tool_calls"],
   }),
+  route("qwen3-vl-plus", "qwen", "Qwen3 VL Plus", "qwen3-vl-plus", "chat_completions", 258400, imageInput({
+    dropParams: ["parallel_tool_calls"],
+  })),
+  route("qwen3-vl-flash", "qwen", "Qwen3 VL Flash", "qwen3-vl-flash", "chat_completions", 258400, imageInput({
+    dropParams: ["parallel_tool_calls"],
+  })),
   route("qwen-plus", "qwen", "Qwen Plus", "qwen-plus", "chat_completions", 128000, {
     dropParams: ["parallel_tool_calls"],
   }),
@@ -242,9 +248,12 @@ export const MODEL_PRESETS = [
   route("glm-4-6", "zhipu", "GLM-4.6", "glm-4.6", "chat_completions", 128000, {
     dropParams: ["parallel_tool_calls"],
   }),
-  route("openrouter-sonnet", "openrouter", "OpenRouter Claude Sonnet", "anthropic/claude-sonnet-4.5", "chat_completions", 200000, {
+  route("glm-4-6v", "zhipu", "GLM-4.6V", "glm-4.6v", "chat_completions", 128000, imageInput({
     dropParams: ["parallel_tool_calls"],
-  }),
+  })),
+  route("openrouter-sonnet", "openrouter", "OpenRouter Claude Sonnet", "anthropic/claude-sonnet-4.5", "chat_completions", 200000, imageInput({
+    dropParams: ["parallel_tool_calls"],
+  })),
   route("siliconflow-qwen3-coder", "siliconflow", "SiliconFlow Qwen3 Coder", "Qwen/Qwen3-Coder-480B-A35B-Instruct", "chat_completions", 262144, {
     dropParams: ["parallel_tool_calls"],
   }),
@@ -286,6 +295,13 @@ function route(presetId, providerId, displayName, model, api, contextWindow, ext
     authMode: provider?.authMode || "api_key",
     apiKeyEnv: provider?.keyEnv || undefined,
     contextWindow,
+    ...extra,
+  };
+}
+
+function imageInput(extra = {}) {
+  return {
+    inputModalities: ["text", "image"],
     ...extra,
   };
 }

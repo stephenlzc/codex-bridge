@@ -80,6 +80,10 @@
       "contextWindow": 258400,
       "priority": 4,
       "rpm": 6,
+      "inputModalities": [
+        "text",
+        "image"
+      ],
       "dropParams": [
         "response_format",
         "parallel_tool_calls"

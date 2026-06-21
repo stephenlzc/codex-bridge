@@ -140,7 +140,7 @@ export function responseMessageToChatMessage(item) {
 
   const message = {
     role,
-    content: contentToText(item.content ?? item.text ?? item.output ?? ""),
+    content: contentToChatContent(item.content ?? item.text ?? item.output ?? ""),
   };
 
   if (Array.isArray(item.tool_calls)) {
@@ -153,6 +153,71 @@ export function responseMessageToChatMessage(item) {
   return message;
 }
 
+export function contentToChatContent(content) {
+  if (content === undefined || content === null) {
+    return "";
+  }
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    const imagePart = imagePartToChat(content);
+    if (imagePart) {
+      return [imagePart];
+    }
+    return contentToText(content);
+  }
+
+  const textParts = [];
+  const chatParts = [];
+  let hasImage = false;
+
+  for (const part of content) {
+    if (typeof part === "string") {
+      if (part) {
+        textParts.push(part);
+        chatParts.push({ type: "text", text: part });
+      }
+      continue;
+    }
+    if (!part || typeof part !== "object") {
+      continue;
+    }
+
+    const imagePart = imagePartToChat(part);
+    if (imagePart) {
+      hasImage = true;
+      chatParts.push(imagePart);
+      continue;
+    }
+
+    const text = textFromContentPart(part);
+    if (text) {
+      textParts.push(text);
+      chatParts.push({ type: "text", text });
+      continue;
+    }
+
+    if (isFilePart(part)) {
+      const placeholder = `[file input not forwarded to chat provider: ${filePartName(part)}]`;
+      textParts.push(placeholder);
+      chatParts.push({ type: "text", text: placeholder });
+      continue;
+    }
+
+    if (part.type && Object.keys(part).length > 0) {
+      const json = stringifyJson(part);
+      textParts.push(json);
+      chatParts.push({ type: "text", text: json });
+    }
+  }
+
+  if (hasImage) {
+    return chatParts;
+  }
+  return textParts.filter(Boolean).join("\n");
+}
+
 export function contentToText(content) {
   if (content === undefined || content === null) {
     return "";
@@ -161,8 +226,15 @@ export function contentToText(content) {
     return content;
   }
   if (!Array.isArray(content)) {
-    if (typeof content.text === "string") {
-      return content.text;
+    const text = textFromContentPart(content);
+    if (text) {
+      return text;
+    }
+    if (isImagePart(content)) {
+      return "[image input not forwarded in text-only context]";
+    }
+    if (isFilePart(content)) {
+      return `[file input not forwarded to chat provider: ${filePartName(content)}]`;
     }
     return stringifyJson(content);
   }
@@ -176,17 +248,73 @@ export function contentToText(content) {
     if (!part || typeof part !== "object") {
       continue;
     }
-    if (typeof part.text === "string") {
-      parts.push(part.text);
-    } else if (typeof part.output_text === "string") {
-      parts.push(part.output_text);
-    } else if (part.type?.includes("image")) {
-      parts.push("[image input omitted by codex-multi-router]");
+    const text = textFromContentPart(part);
+    if (text) {
+      parts.push(text);
+    } else if (isImagePart(part)) {
+      parts.push("[image input not forwarded in text-only context]");
+    } else if (isFilePart(part)) {
+      parts.push(`[file input not forwarded to chat provider: ${filePartName(part)}]`);
     } else if (part.type && Object.keys(part).length > 0) {
       parts.push(stringifyJson(part));
     }
   }
   return parts.filter(Boolean).join("\n");
+}
+
+function textFromContentPart(part) {
+  if (typeof part?.text === "string") {
+    return part.text;
+  }
+  if (typeof part?.output_text === "string") {
+    return part.output_text;
+  }
+  return "";
+}
+
+function imagePartToChat(part) {
+  if (!isImagePart(part)) {
+    return null;
+  }
+  const rawImageUrl = part.image_url ?? part.imageUrl ?? part.url;
+  const url =
+    typeof rawImageUrl === "string"
+      ? rawImageUrl
+      : rawImageUrl?.url || part.url;
+  if (!url) {
+    return { type: "text", text: "[image input missing url]" };
+  }
+  const imageUrl = { url };
+  const detail = part.detail || rawImageUrl?.detail;
+  if (detail) {
+    imageUrl.detail = detail;
+  }
+  return { type: "image_url", image_url: imageUrl };
+}
+
+function isImagePart(part) {
+  const type = String(part?.type || "").toLowerCase();
+  return type === "image_url" || type.includes("image");
+}
+
+function isFilePart(part) {
+  const type = String(part?.type || "").toLowerCase();
+  return (
+    type.includes("file") ||
+    type.includes("pdf") ||
+    type.includes("document")
+  );
+}
+
+function filePartName(part) {
+  return (
+    part.filename ||
+    part.file_name ||
+    part.name ||
+    part.file_id ||
+    part.id ||
+    "unnamed file"
+  );
 }
 
 function systemInstructionsFromRequest(request) {
