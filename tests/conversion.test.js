@@ -80,6 +80,24 @@ test("responses passthrough models expose reasoning levels", () => {
   assert.equal(catalog.models[0].default_reasoning_level, "medium");
 });
 
+test("gpt responses catalog entries allow image input", () => {
+  const catalog = buildModelCatalog({
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+
+  assert.deepEqual(catalog.models[0].input_modalities, ["text", "image"]);
+  assert.equal(catalog.models[0].supports_image_detail_original, true);
+});
+
 test("hybrid auth modes validate and default to api_key", () => {
   const config = {
     models: [

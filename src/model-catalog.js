@@ -42,6 +42,7 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
   const autoCompactTokenLimit = Math.floor(
     contextWindow * (autoCompactPercent / 100),
   );
+  const inputModalities = inputModalitiesForModel(model);
 
   const entry = {
     slug: model.id,
@@ -67,13 +68,13 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
       limit: Math.min(contextWindow, 10000),
     },
     supports_parallel_tool_calls: true,
-    supports_image_detail_original: false,
+    supports_image_detail_original: inputModalities.includes("image"),
     context_window: contextWindow,
     max_context_window: contextWindow,
     effective_context_window_percent: effectiveContextWindowPercent,
     auto_compact_token_limit: autoCompactTokenLimit,
     experimental_supported_tools: [],
-    input_modalities: model.inputModalities || ["text"],
+    input_modalities: inputModalities,
     supports_search_tool: false,
   };
 
@@ -83,6 +84,16 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
     model.supportedReasoningLevels || reasoning.levels;
 
   return entry;
+}
+
+function inputModalitiesForModel(model) {
+  if (Array.isArray(model.inputModalities) && model.inputModalities.length > 0) {
+    return model.inputModalities;
+  }
+  if (model.api === "responses") {
+    return ["text", "image"];
+  }
+  return ["text"];
 }
 
 export function openAiModelsList(config) {
