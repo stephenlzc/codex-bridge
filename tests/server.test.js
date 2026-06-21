@@ -544,6 +544,228 @@ test("server reloads router config file before authorizing requests", async () =
   }
 });
 
+test("server routes by upstream model alias instead of falling back to default", async () => {
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    assert.equal(req.headers.authorization, "Bearer zhipu-key");
+
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.equal(body.model, "glm-4.6");
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "chatcmpl_alias",
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "glm alias hit",
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: "http://127.0.0.1:9/v1",
+        model: "gpt-5.5",
+        authMode: "api_key",
+        apiKey: "default-key",
+      },
+      {
+        id: "gpt-5.2",
+        displayName: "GLM-4.6",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "glm-4.6",
+        authMode: "api_key",
+        apiKey: "zhipu-key",
+      },
+    ],
+  });
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "glm-4.6",
+        input: "hello",
+      }),
+    });
+    assert.equal(response.output_text, "glm alias hit");
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("server routes by normalized display name alias", async () => {
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.equal(body.model, "deepseek-v4-pro");
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "chatcmpl_display_alias",
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "display alias hit",
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: "http://127.0.0.1:9/v1",
+        model: "gpt-5.5",
+        authMode: "api_key",
+        apiKey: "default-key",
+      },
+      {
+        id: "gpt-5.4-mini",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        authMode: "api_key",
+        apiKey: "deepseek-key",
+        slotLabel: "GPT-5.4-Mini",
+        sourcePresetId: "deepseek-v4-pro",
+      },
+    ],
+  });
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek v4 pro",
+        input: "hello",
+      }),
+    });
+    assert.equal(response.output_text, "display alias hit");
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("server rejects explicit unknown model instead of silently using default", async () => {
+  const upstream = http.createServer(async (_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "resp_default",
+        object: "response",
+        status: "completed",
+        model: "gpt-5.5",
+        output: [],
+        output_text: "default should not be used",
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "api_key",
+        apiKey: "default-key",
+      },
+    ],
+  });
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetch(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "not-selected-model",
+        input: "hello",
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 404);
+    assert.equal(body.error.code, "model_not_configured");
+    assert.match(body.error.message, /not-selected-model/);
+    assert.match(body.error.message, /gpt-5\.5/);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("api_key routes ignore incoming Codex bearer and use provider key", async () => {
   const upstream = http.createServer(async (req, res) => {
     assert.equal(req.url, "/v1/chat/completions");

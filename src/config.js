@@ -52,13 +52,59 @@ export function validateConfig(config) {
 }
 
 export function routeForModel(config, requestedModel) {
-  const modelId = requestedModel || config.defaultModel;
+  if (!requestedModel) {
+    return defaultRoute(config);
+  }
+  const requested = String(requestedModel || "").trim();
+  const normalized = normalizeModelName(requested);
+  const route = config.models.find((model) =>
+    modelNameAliases(model).some((alias) => alias === normalized),
+  );
+  if (route) {
+    return route;
+  }
+  const available = config.models
+    .flatMap((model) => [model.id, model.displayName, model.model])
+    .filter(Boolean)
+    .join(", ");
+  const error = new Error(
+    `Model is not configured in CodexBridge: ${requested}. Available models: ${available}`,
+  );
+  error.statusCode = 404;
+  error.code = "model_not_configured";
+  throw error;
+}
+
+function defaultRoute(config) {
   return (
-    config.models.find((model) => model.id === modelId) ||
-    config.models.find((model) => model.displayName === modelId) ||
     config.models.find((model) => model.id === config.defaultModel) ||
     config.models[0]
   );
+}
+
+function modelNameAliases(model) {
+  return [
+    model.id,
+    model.displayName,
+    model.model,
+    model.slotLabel,
+    model.sourcePresetId,
+  ]
+    .filter(Boolean)
+    .flatMap((value) => [
+      normalizeModelName(value),
+      normalizeModelName(String(value).replace(/^codex-/, "")),
+    ]);
+}
+
+function normalizeModelName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export function apiKeyForRoute(route) {

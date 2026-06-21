@@ -17,7 +17,13 @@ assert.ok(fs.existsSync(appPath), `missing packaged app: ${appPath}`);
 assert.ok(fs.existsSync(executablePath), `missing packaged executable: ${executablePath}`);
 assert.ok(fs.existsSync(path.join(appRoot, "src", "server.js")), "missing packaged router script");
 
-await smokeRouter(executablePath, appRoot);
+if (process.platform === "darwin") {
+  await smokeRouter(executablePath, appRoot);
+} else {
+  console.log(
+    `Skipping macOS runtime smoke on ${process.platform}; structural package checks passed.`,
+  );
+}
 
 console.log(`Packaged macOS smoke passed: ${appPath}`);
 
