@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("codexBridge", {
   applyCodexConfig: () => ipcRenderer.invoke("codex:apply"),
   initializeCodex: () => ipcRenderer.invoke("codex:initialize"),
   restoreCodexConfig: () => ipcRenderer.invoke("codex:restore"),
+  recoverHistoryAccess: () => ipcRenderer.invoke("codex:recover-history"),
   startRouter: () => ipcRenderer.invoke("router:start"),
   stopRouter: () => ipcRenderer.invoke("router:stop"),
   openFolder: (target) => ipcRenderer.invoke("folder:open", target),

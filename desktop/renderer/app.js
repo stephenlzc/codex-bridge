@@ -59,11 +59,11 @@ document.querySelector("#initializeCodex").addEventListener("click", (event) =>
   }),
 );
 
-document.querySelector("#restoreCodexConfig").addEventListener("click", (event) =>
+document.querySelector("#recoverHistoryAccess").addEventListener("click", (event) =>
   runAction(event.currentTarget, async () => {
-    await api.restoreCodexConfig();
+    const result = await api.recoverHistoryAccess();
     await refresh();
-    showToast("Codex 配置已恢复到 CodexBridge 写入前的备份。");
+    showToast(result?.message || "已恢复 CodexBridge 写入前的 Codex 配置。请重启 Codex 查看历史对话。");
   }),
 );
 

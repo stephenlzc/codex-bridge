@@ -284,6 +284,18 @@ ipcMain.handle("codex:restore", async () => {
   return result;
 });
 
+ipcMain.handle("codex:recover-history", async () => {
+  const settings = await loadSettings();
+  const result = settings.recoverCodexHistoryAccess();
+  appendLog(`Recovered Codex history access from backup: ${result.backup}`);
+  if (result.currentBackup) {
+    appendLog(`Current CodexBridge config backed up before history recovery: ${result.currentBackup}`);
+  }
+  appendLog(result.nextStep);
+  broadcastState();
+  return result;
+});
+
 ipcMain.handle("router:start", async () => {
   if (routerProcess) {
     return { ok: true, message: "Router is already running." };
@@ -544,7 +556,7 @@ async function runDesktopSmokeChecks() {
       (async () => {
         const required = [
           "#initializeCodex",
-          "#restoreCodexConfig",
+          "#recoverHistoryAccess",
           "#routerToggle",
           "#saveModelSelectionPanel",
           "#providerGrid",

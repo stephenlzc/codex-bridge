@@ -59,6 +59,12 @@ Win 用户机器不需要安装 Node.js、npm 或 Electron。
 
 GPT 订阅模型不需要在 CodexBridge 里填写 API Key。DeepSeek、Kimi、Qwen、OpenRouter 等 API 模型需要填写各自 Provider 的 API Key。
 
+### 历史对话不见了
+
+如果启动 Router 并重启 Codex 后，Codex 里看不到以前的对话，先不要删除任何目录。打开 CodexBridge，点击右上角“找回历史对话”，然后完全退出并重新打开 Codex。
+
+这个按钮会把 `%USERPROFILE%\.codex\config.toml` 恢复到 CodexBridge 写入前的备份，让 Codex 回到原来的会话列表视图。当前 CodexBridge 配置会先备份，不会删除历史对话文件。
+
 ## English
 
 Win users should not run from source and should not run `npm install`. The customer-facing delivery is the Windows portable package from GitHub Releases:
@@ -117,3 +123,9 @@ Win users do not need Node.js, npm, or Electron installed.
 6. Open or restart Codex.
 
 GPT subscription models do not need an API key in CodexBridge. API providers such as DeepSeek, Kimi, Qwen, and OpenRouter need their own provider keys.
+
+### Missing History
+
+If old Codex conversations disappear after starting Router and restarting Codex, do not delete any folders. Open CodexBridge, click Recover History in the top-right corner, then fully quit and reopen Codex.
+
+This restores `%USERPROFILE%\.codex\config.toml` from the backup created before CodexBridge wrote its config, so Codex can return to the previous conversation-list view. The current CodexBridge config is backed up first, and conversation files are not deleted.

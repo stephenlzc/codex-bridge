@@ -15,6 +15,7 @@ import {
   providerCatalog,
   prepareRouterStartConfig,
   readCustomModels,
+  recoverCodexHistoryAccess,
   restoreCodexConfig,
   saveCustomModel,
   saveSelection,
@@ -525,6 +526,26 @@ test("restoreCodexConfig explains when no backup exists", () => {
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
 
   assert.throws(() => restoreCodexConfig({ homeDir }), /没有找到 CodexBridge 写入前的备份/);
+});
+
+test("recoverCodexHistoryAccess restores the pre-Bridge config with user guidance", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(target, 'model = "original-history-view"\n', "utf8");
+
+  applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+
+  const recovered = recoverCodexHistoryAccess({ homeDir });
+
+  assert.equal(recovered.action, "recover_history_access");
+  assert.equal(recovered.target, target);
+  assert.match(fs.readFileSync(target, "utf8"), /original-history-view/);
+  assert.match(recovered.message, /历史对话/);
+  assert.match(recovered.nextStep, /重启 Codex/);
+  assert.ok(recovered.currentBackup, "current CodexBridge config should be backed up before recovery");
 });
 
 function makeTempProject() {

@@ -372,6 +372,16 @@ export function restoreCodexConfig({ homeDir = os.homedir() } = {}) {
   };
 }
 
+export function recoverCodexHistoryAccess({ homeDir = os.homedir() } = {}) {
+  const restored = restoreCodexConfig({ homeDir });
+  return {
+    ...restored,
+    action: "recover_history_access",
+    message: "已恢复 CodexBridge 写入前的 Codex 配置。重启 Codex 后，之前的历史对话通常会回到原来的列表视图。",
+    nextStep: "请完全退出并重启 Codex；如果之后还要使用 CodexBridge，再回到本应用点击“更新 Codex 配置”并打开 Router。",
+  };
+}
+
 function preferredRestoreBackup(backups) {
   const nonBridgeBackup = backups.find((backup) => {
     try {
