@@ -63,7 +63,7 @@ GPT 订阅模型不需要在 CodexBridge 里填写 API Key。DeepSeek、Kimi、Q
 
 如果启动 Router 并重启 Codex 后，Codex 里看不到以前的对话，先不要删除任何目录。打开 CodexBridge，点击右上角“找回历史对话”，然后完全退出并重新打开 Codex。
 
-这个按钮只会把当前 CodexBridge 配置里的历史对话显示打开，不会把模型栏、Router 地址或 API 配置退回切换前。当前配置会先备份，不会删除历史对话文件。
+这个按钮会从 CodexBridge 写入前的备份里合并历史对话/桌面相关配置，同时保留当前模型栏、Router 地址和 API 配置。当前配置会先备份，不会删除历史对话文件。
 
 ## English
 
@@ -128,4 +128,4 @@ GPT subscription models do not need an API key in CodexBridge. API providers suc
 
 If old Codex conversations disappear after starting Router and restarting Codex, do not delete any folders. Open CodexBridge, click Recover History in the top-right corner, then fully quit and reopen Codex.
 
-This only enables history visibility in the current CodexBridge config. It does not roll the model list, Router URL, or API settings back to the pre-Bridge config. The current config is backed up first, and conversation files are not deleted.
+This merges history and desktop-related settings from the pre-Bridge backup while keeping the current model list, Router URL, and API settings. The current config is backed up first, and conversation files are not deleted.

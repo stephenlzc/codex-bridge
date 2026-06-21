@@ -310,6 +310,12 @@ If Codex shows `502 Bad Gateway`, open the CodexBridge log page first.
 - 如果所有模型都 502 且没有 access 日志，常见原因是 Codex 配置仍是旧的，或系统代理/VPN 接管了本地流量。当前版本在启动 Router 时会自动写入 `http://localhost:15722/v1`。
 - 如果日志写着 `Missing API key ... Set MOONSHOT_API_KEY` 或其他 `*_API_KEY`，请到“密钥”页保存对应服务商的 Key。`gpt-5.2` 这类 Codex 槽位名可能实际映射到 Kimi 或其他模型。
 
+## Recover Conversations / 找回历史对话
+
+If old Codex conversations disappear after enabling CodexBridge, open CodexBridge and click `找回历史对话`. The app merges history and desktop-related settings from the pre-Bridge backup while keeping the current CodexBridge model list, Router URL, and API settings. Then fully quit and reopen Codex.
+
+如果开启 CodexBridge 后看不到以前的 Codex 对话，打开 CodexBridge，点击 `找回历史对话`。应用会从写入 CodexBridge 前的备份里合并历史对话/桌面相关配置，同时保留当前模型栏、Router 地址和 API 配置。然后完全退出并重新打开 Codex。
+
 ## Safety / 安全说明
 
 - Do not commit `config/router.config.json`.

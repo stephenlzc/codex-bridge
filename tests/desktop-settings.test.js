@@ -582,6 +582,42 @@ test("applyCodexConfig writes config and creates backup", () => {
   assert.equal(fs.existsSync(result.backup), true);
 });
 
+test("applyCodexConfig preserves existing Codex user settings while adding CodexBridge", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(
+    target,
+    [
+      'sandbox_mode = "danger-full-access"',
+      'approval_policy = "never"',
+      "",
+      "[history]",
+      'persistence = "save-all"',
+      "",
+      "[desktop]",
+      'appearanceTheme = "dark"',
+      "",
+      "[projects.'f:\\game_code\\demo']",
+      'trust_level = "trusted"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  const written = fs.readFileSync(target, "utf8");
+
+  assert.match(written, /model_provider = "codex-bridge"/);
+  assert.match(written, /\[model_providers\.codex-bridge]/);
+  assert.match(written, /sandbox_mode = "danger-full-access"/);
+  assert.match(written, /\[history]\s+persistence = "save-all"/);
+  assert.match(written, /\[desktop]\s+appearanceTheme = "dark"/);
+  assert.match(written, /\[projects\.'f:\\game_code\\demo']\s+trust_level = "trusted"/);
+});
+
 test("applyCodexConfig skips backup when Codex config is already current", () => {
   const rootDir = makeTempProject();
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
@@ -709,6 +745,42 @@ test("recoverCodexHistoryAccess keeps CodexBridge config and only enables histor
   assert.match(recovered.message, /历史对话/);
   assert.match(recovered.nextStep, /重启 Codex/);
   assert.ok(recovered.currentBackup, "current CodexBridge config should be backed up before recovery");
+});
+
+test("recoverCodexHistoryAccess merges the pre-Bridge backup back into current CodexBridge config", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(
+    target,
+    [
+      'sandbox_mode = "danger-full-access"',
+      "",
+      "[history]",
+      'persistence = "save-all"',
+      "",
+      "[desktop]",
+      'appearanceTheme = "dark"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const applied = applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  fs.writeFileSync(target, buildCodexToml({ rootDir, mode: MODE_HYBRID }), "utf8");
+
+  const recovered = recoverCodexHistoryAccess({ homeDir });
+  const written = fs.readFileSync(target, "utf8");
+
+  assert.ok(applied.backup);
+  assert.equal(recovered.action, "recover_history_access");
+  assert.match(written, /model_provider = "codex-bridge"/);
+  assert.match(written, /\[model_providers\.codex-bridge]/);
+  assert.match(written, /\[history]\s+persistence = "save-all"/);
+  assert.match(written, /\[desktop]\s+appearanceTheme = "dark"/);
+  assert.doesNotMatch(written, /disable_response_storage = true/);
 });
 
 function makeTempProject() {

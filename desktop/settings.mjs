@@ -19,6 +19,16 @@ export {
 export const MODE_ALL_API = "all_api";
 export const MODE_HYBRID = "hybrid";
 
+const CODEX_BRIDGE_TOP_LEVEL_KEYS = new Set([
+  "model_provider",
+  "model",
+  "model_catalog_json",
+  "model_reasoning_effort",
+  "disable_response_storage",
+  "network_access",
+  "windows_wsl_setup_acknowledged",
+]);
+
 export function routerConfigPath(rootDir) {
   return path.join(rootDir, "config", "router.config.json");
 }
@@ -468,9 +478,11 @@ export function applyCodexConfig({
   const target = codexConfigPath(homeDir);
   const targetDir = path.dirname(target);
   fs.mkdirSync(targetDir, { recursive: true });
-  const content = buildCodexToml({ rootDir, mode, port });
+  const bridgeContent = buildCodexToml({ rootDir, mode, port });
+  const existingContent = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+  const content = mergeCodexBridgeConfig(existingContent, bridgeContent);
 
-  if (fs.existsSync(target) && fs.readFileSync(target, "utf8") === content) {
+  if (fs.existsSync(target) && existingContent === content) {
     return { target, backup: null, unchanged: true };
   }
 
@@ -491,14 +503,7 @@ export function restoreCodexConfig({ homeDir = os.homedir() } = {}) {
     throw new Error("没有找到 CodexBridge 写入前的备份，无法自动恢复 Codex 配置。");
   }
 
-  const backups = fs
-    .readdirSync(targetDir)
-    .filter((name) => /^config\.toml\.codexbridge\..+\.bak$/.test(name))
-    .map((name) => {
-      const fullPath = path.join(targetDir, name);
-      return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs };
-    })
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const backups = codexBridgeBackups(targetDir);
 
   if (!backups.length) {
     throw new Error("没有找到 CodexBridge 写入前的备份，无法自动恢复 Codex 配置。");
@@ -537,7 +542,10 @@ export function recoverCodexHistoryAccess({ homeDir = os.homedir() } = {}) {
     };
   }
 
-  const nextContent = enableResponseStorage(content);
+  const backups = fs.existsSync(path.dirname(target)) ? codexBridgeBackups(path.dirname(target)) : [];
+  const restoreFrom = backups.length ? preferredRestoreBackup(backups) : null;
+  const baseContent = restoreFrom ? fs.readFileSync(restoreFrom.fullPath, "utf8") : content;
+  const nextContent = enableResponseStorage(mergeCodexBridgeConfig(baseContent, content));
   let currentBackup = null;
   let unchanged = nextContent === content;
   if (!unchanged) {
@@ -552,10 +560,136 @@ export function recoverCodexHistoryAccess({ homeDir = os.homedir() } = {}) {
     unchanged,
     action: "recover_history_access",
     message: unchanged
-      ? "历史对话显示已经是开启状态；当前 CodexBridge 配置没有被改回旧配置。"
-      : "已开启历史对话显示，并保留当前 CodexBridge 模型与 Router 配置。",
+      ? "配置已包含历史对话设置，没有修改；请完全退出并重新打开 Codex。"
+      : "已合并历史对话配置，并保留当前模型与 Router 配置；请完全退出并重新打开 Codex。",
     nextStep: "请完全退出并重启 Codex；模型栏仍会继续使用 CodexBridge 当前配置。",
   };
+}
+
+function mergeCodexBridgeConfig(baseContent, bridgeContent) {
+  const bridge = extractCodexBridgeConfig(bridgeContent);
+  const cleanedBase = stripCodexBridgeConfig(baseContent || "");
+  const { preamble, tables } = splitTomlPreamble(cleanedBase);
+  const sections = [
+    preamble.join("\n"),
+    bridge.topLevelLines.join("\n"),
+    bridge.providerLines.join("\n"),
+    tables.join("\n"),
+  ].filter((section) => section.trim());
+  return `${sections.join("\n\n")}\n`;
+}
+
+function stripCodexBridgeConfig(content) {
+  const lines = content.split(/\r?\n/);
+  const output = [];
+  let inTable = false;
+  let skippingBridgeProvider = false;
+
+  for (const line of lines) {
+    if (skippingBridgeProvider) {
+      if (!isTomlTableHeader(line)) {
+        continue;
+      }
+      skippingBridgeProvider = false;
+    }
+
+    if (isCodexBridgeProviderHeader(line)) {
+      skippingBridgeProvider = true;
+      inTable = true;
+      continue;
+    }
+
+    if (isTomlTableHeader(line)) {
+      inTable = true;
+      output.push(line);
+      continue;
+    }
+
+    if (!inTable && isCodexBridgeTopLevelLine(line)) {
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return trimBlankLines(output).join("\n");
+}
+
+function extractCodexBridgeConfig(content) {
+  const lines = content.split(/\r?\n/);
+  const topLevelLines = [];
+  const providerLines = [];
+  let inTable = false;
+  let collectingBridgeProvider = false;
+
+  for (const line of lines) {
+    if (collectingBridgeProvider) {
+      if (isTomlTableHeader(line)) {
+        collectingBridgeProvider = false;
+      } else {
+        providerLines.push(line);
+        continue;
+      }
+    }
+
+    if (isCodexBridgeProviderHeader(line)) {
+      collectingBridgeProvider = true;
+      providerLines.push(line);
+      inTable = true;
+      continue;
+    }
+
+    if (isTomlTableHeader(line)) {
+      inTable = true;
+      continue;
+    }
+
+    if (!inTable && isCodexBridgeTopLevelLine(line)) {
+      topLevelLines.push(line);
+    }
+  }
+
+  return {
+    topLevelLines: trimBlankLines(topLevelLines),
+    providerLines: trimBlankLines(providerLines),
+  };
+}
+
+function splitTomlPreamble(content) {
+  const lines = trimBlankLines(content.split(/\r?\n/));
+  const firstTableIndex = lines.findIndex((line) => isTomlTableHeader(line));
+  if (firstTableIndex < 0) {
+    return { preamble: lines, tables: [] };
+  }
+  return {
+    preamble: trimBlankLines(lines.slice(0, firstTableIndex)),
+    tables: trimBlankLines(lines.slice(firstTableIndex)),
+  };
+}
+
+function isCodexBridgeTopLevelLine(line) {
+  const match = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=/);
+  return Boolean(match && CODEX_BRIDGE_TOP_LEVEL_KEYS.has(match[1]));
+}
+
+function isTomlTableHeader(line) {
+  return /^\s*\[/.test(line);
+}
+
+function isCodexBridgeProviderHeader(line) {
+  return /^\s*\[model_providers\.codex-bridge]\s*$/.test(line);
+}
+
+function trimBlankLines(lines) {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && !lines[start].trim()) {
+    start += 1;
+  }
+  while (end > start && !lines[end - 1].trim()) {
+    end -= 1;
+  }
+  return lines.slice(start, end);
 }
 
 function enableResponseStorage(content) {
@@ -572,6 +706,17 @@ function enableResponseStorage(content) {
     return lines.join("\n");
   }
   return `${content.trimEnd()}\ndisable_response_storage = false\n`;
+}
+
+function codexBridgeBackups(targetDir) {
+  return fs
+    .readdirSync(targetDir)
+    .filter((name) => /^config\.toml\.codexbridge\..+\.bak$/.test(name))
+    .map((name) => {
+      const fullPath = path.join(targetDir, name);
+      return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
 function preferredRestoreBackup(backups) {
