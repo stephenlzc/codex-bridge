@@ -31,6 +31,7 @@ test("usage store records status-only responses for responses api routes", () =>
 
   usage.recordLine("[10:20:11] [2026-06-20T18:20:11.250Z] req_be2wdmcg <- /v1/responses model=gpt-5.5 route=gpt-5.5 api=responses upstream_model=gpt-5.5 stream=true previous_response_id=- client_auth=codex_openai upstream_auth=codex_openai");
   usage.recordLine("[10:20:15] [2026-06-20T18:20:15.061Z] req_be2wdmcg <- upstream route=gpt-5.5 status=200");
+  usage.recordLine("[10:20:15] [2026-06-20T18:20:15.061Z] req_be2wdmcg <- upstream route=gpt-5.5 usage=(none)");
 
   const events = usage.events();
   assert.equal(events.length, 1);
@@ -68,6 +69,24 @@ test("usage store records request-scoped upstream errors", () => {
   assert.equal(events[0].error, "TypeError: fetch failed");
   assert.equal(events[0].errorCause, "UND_ERR_CONNECT_TIMEOUT");
   assert.equal(usage.summary().byModel[0].errors, 1);
+});
+
+test("usage store keeps response route metadata when status arrives before usage", () => {
+  const usage = createUsageStore();
+
+  usage.recordLine("[10:22:11] [2026-06-20T18:22:11.250Z] req_gpt55 <- /v1/responses model=gpt-5.5 route=gpt-5.5 api=responses upstream_model=gpt-5.5 stream=true previous_response_id=- client_auth=codex_openai upstream_auth=codex_openai");
+  usage.recordLine("[10:22:11] [2026-06-20T18:22:11.260Z] req_gpt55 -> upstream route=gpt-5.5 api=responses upstream_model=gpt-5.5 url=https://chatgpt.com/backend-api/codex/responses");
+  usage.recordLine("[10:22:12] [2026-06-20T18:22:12.061Z] req_gpt55 <- upstream route=gpt-5.5 status=200");
+  usage.recordLine("[10:22:12] [2026-06-20T18:22:12.062Z] req_gpt55 <- upstream route=gpt-5.5 usage prompt=12 completion=34 total=46");
+
+  const events = usage.events();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].codexModel, "gpt-5.5");
+  assert.equal(events[0].api, "responses");
+  assert.equal(events[0].upstreamModel, "gpt-5.5");
+  assert.equal(events[0].promptTokens, 12);
+  assert.equal(events[0].completionTokens, 34);
+  assert.equal(events[0].totalTokens, 46);
 });
 
 test("usage store can rebuild summary from saved events", () => {

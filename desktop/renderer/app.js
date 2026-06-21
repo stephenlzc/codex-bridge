@@ -401,7 +401,7 @@ function renderUsage() {
   els.statPrompt.textContent = formatNumber(summary.promptTokens || 0);
   els.statCompletion.textContent = formatNumber(summary.completionTokens || 0);
   renderUsageChart(summary.byModel || []);
-  renderUsageTable(summary.byModel || [], events);
+  renderUsageTableStable(summary.byModel || [], events);
 }
 
 function renderOverviewUsage() {
@@ -490,6 +490,68 @@ function renderUsageTable(rows, events) {
       <span>当前显示名</span><span>实际上游模型</span><span>接口</span><span>状态</span><span>输入</span><span>输出</span><span>总量</span><span>耗时</span><span>时间</span>
     </div>
     <div class="usage-grid">${eventRows}</div>
+  `;
+}
+
+function renderUsageTableStable(rows, events) {
+  const modelRows = rows.length
+    ? rows
+        .map(
+          (row) => `
+            <div class="usage-row">
+              <span>${escapeHtml(displayRoute(row.route))}</span>
+              <span>${escapeHtml(row.upstreamModel || "-")}</span>
+              <span>${escapeHtml(row.api || "-")}</span>
+              <span>${formatNumber(row.calls)}</span>
+              <span>${formatNumber(row.promptTokens)}</span>
+              <span>${formatNumber(row.completionTokens)}</span>
+              <span>${formatNumber(row.totalTokens)}</span>
+              <span>${row.errors ? `${row.errors} 错误：${escapeHtml(row.lastError || row.lastStatus || "")}` : row.lastStatus || "-"}</span>
+              <span>${formatTime(row.lastAt)}</span>
+            </div>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state">暂无模型汇总。</div>`;
+  const eventRows = events.length
+    ? events
+        .slice(0, 40)
+        .map(
+          (event) => `
+            <div class="usage-row recent">
+              <span>${escapeHtml(displayRoute(event.route))}</span>
+              <span>${escapeHtml(event.upstreamModel || "-")}</span>
+              <span>${escapeHtml(event.api || "-")}</span>
+              <span>${event.status && event.status >= 400 ? `${event.status} ${escapeHtml(event.error || "")}` : event.status || "-"}</span>
+              <span>${formatNumber(event.promptTokens)}</span>
+              <span>${formatNumber(event.completionTokens)}</span>
+              <span>${formatNumber(event.totalTokens)}</span>
+              <span>${formatDuration(event.durationMs)}</span>
+              <span>${formatTime(event.finishedAt || event.startedAt)}</span>
+            </div>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state">暂无明细记录。</div>`;
+  els.usageTable.innerHTML = `
+    <h3>按模型汇总</h3>
+    <div class="usage-table-block">
+      <div class="usage-grid">
+        <div class="usage-row header">
+          <span>当前显示名</span><span>实际上游模型</span><span>接口</span><span>次数</span><span>输入</span><span>输出</span><span>总量</span><span>状态</span><span>最近时间</span>
+        </div>
+        ${modelRows}
+      </div>
+    </div>
+    <h3>最近请求</h3>
+    <div class="usage-table-block">
+      <div class="usage-grid">
+        <div class="usage-row header">
+          <span>当前显示名</span><span>实际上游模型</span><span>接口</span><span>状态</span><span>输入</span><span>输出</span><span>总量</span><span>耗时</span><span>时间</span>
+        </div>
+        ${eventRows}
+      </div>
+    </div>
   `;
 }
 

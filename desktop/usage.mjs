@@ -77,7 +77,7 @@ export function createUsageStore({ maxEvents = 800, initialEvents = [] } = {}) {
       const item = ensurePending(status.requestId, status.iso, status.route);
       item.finishedAt = status.iso;
       item.status = Number(status.status);
-      if (item.api === "responses" || Number(status.status) >= 400) {
+      if (Number(status.status) >= 400) {
         finalize(item);
       }
       return;

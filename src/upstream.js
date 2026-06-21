@@ -77,13 +77,23 @@ export async function proxyResponsesApi(requestBody, route, res, context = {}) {
 
   res.writeHead(upstream.status, filteredHeaders(upstream.headers));
   if (!upstream.body) {
+    logUsage(context, route, null);
     res.end();
     return;
   }
+  const decoder = new TextDecoder();
+  let responseTail = "";
   for await (const chunk of upstream.body) {
-    res.write(Buffer.from(chunk));
+    const buffer = Buffer.from(chunk);
+    responseTail += decoder.decode(buffer, { stream: true });
+    if (responseTail.length > 2_000_000) {
+      responseTail = responseTail.slice(-2_000_000);
+    }
+    res.write(buffer);
   }
+  responseTail += decoder.decode();
   res.end();
+  logUsage(context, route, extractResponsesUsage(responseTail));
 }
 
 export async function proxyChatCompletions(
@@ -300,11 +310,90 @@ function logUsage(context, route, usage) {
     );
     return;
   }
+  const normalized = normalizeUsage(usage);
   console.log(
     `[${new Date().toISOString()}] ${requestId} <- upstream ` +
-      `route=${route.id} usage prompt=${usage.prompt_tokens ?? 0} ` +
-      `completion=${usage.completion_tokens ?? 0} total=${usage.total_tokens ?? 0}`,
+      `route=${route.id} usage prompt=${normalized.prompt_tokens} ` +
+      `completion=${normalized.completion_tokens} total=${normalized.total_tokens}`,
   );
+}
+
+function extractResponsesUsage(text) {
+  const direct = extractUsageObject(tryParseJson(text));
+  if (direct) {
+    return direct;
+  }
+
+  let latest = null;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) {
+      continue;
+    }
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    const parsed = tryParseJson(data);
+    const usage = extractUsageObject(parsed);
+    if (usage) {
+      latest = usage;
+    }
+  }
+  return latest;
+}
+
+function extractUsageObject(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidates = [
+    value.usage,
+    value.response?.usage,
+    value.data?.usage,
+    value.result?.usage,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function normalizeUsage(usage = {}) {
+  const promptTokens = tokenNumber(
+    usage.prompt_tokens,
+    usage.input_tokens,
+    usage.promptTokens,
+    usage.inputTokens,
+  );
+  const completionTokens = tokenNumber(
+    usage.completion_tokens,
+    usage.output_tokens,
+    usage.completionTokens,
+    usage.outputTokens,
+  );
+  const totalTokens = tokenNumber(
+    usage.total_tokens,
+    usage.totalTokens,
+    promptTokens + completionTokens,
+  );
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+  };
+}
+
+function tokenNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+  return 0;
 }
 
 function safeUrl(value) {

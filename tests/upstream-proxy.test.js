@@ -120,6 +120,77 @@ test("codex_openai responses use ChatGPT Codex backend and forward Codex headers
   }
 });
 
+test("responses stream logs token usage from completed SSE event", async () => {
+  const originalBackend = process.env.CODEXBRIDGE_CHATGPT_CODEX_BASE_URL;
+  const originalLog = console.log;
+  const logs = [];
+
+  const upstream = httpServer(async (_req, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+    res.write("event: response.completed\n");
+    res.write(
+      `data: ${JSON.stringify({
+        type: "response.completed",
+        response: {
+          id: "resp_with_usage",
+          usage: {
+            input_tokens: 12,
+            output_tokens: 34,
+            total_tokens: 46,
+          },
+        },
+      })}\n\n`,
+    );
+    res.end("data: [DONE]\n\n");
+  });
+
+  try {
+    await listen(upstream);
+    process.env.CODEXBRIDGE_CHATGPT_CODEX_BASE_URL = `${serverUrl(upstream)}/backend-api/codex`;
+    console.log = (line) => logs.push(String(line));
+
+    const res = collectResponse();
+    await proxyResponsesApi(
+      {
+        model: "gpt-5.5",
+        input: "hello",
+        stream: true,
+      },
+      {
+        id: "gpt-5.5",
+        api: "responses",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+      res,
+      {
+        requestId: "req_usage",
+        clientAuth: {
+          kind: "codex_openai",
+          bearerToken: "codex-openai-token",
+        },
+      },
+    );
+
+    assert.match(res.body(), /response.completed/);
+    assert.ok(
+      logs.some((line) =>
+        line.includes("req_usage <- upstream route=gpt-5.5 usage prompt=12 completion=34 total=46"),
+      ),
+      "expected Responses SSE usage to be logged",
+    );
+  } finally {
+    console.log = originalLog;
+    if (originalBackend === undefined) {
+      delete process.env.CODEXBRIDGE_CHATGPT_CODEX_BASE_URL;
+    } else {
+      process.env.CODEXBRIDGE_CHATGPT_CODEX_BASE_URL = originalBackend;
+    }
+    await close(upstream);
+  }
+});
+
 function snapshotProxyEnv() {
   const keys = proxyEnvKeys();
   return Object.fromEntries(keys.map((key) => [key, process.env[key]]));
