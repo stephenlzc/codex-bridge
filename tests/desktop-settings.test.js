@@ -197,6 +197,7 @@ test("routerRuntimeEnv disables system proxy when desktop option is enabled", ()
 
   assert.equal(env.PATH, "base-path");
   assert.equal(env.ROUTER_CONFIG, path.join(rootDir, "config", "router.config.json"));
+  assert.equal(env.CODEXBRIDGE_SECRETS_FILE, path.join(rootDir, "config", "secrets.local.json"));
   assert.equal(env.CODEXBRIDGE_DISABLE_SYSTEM_PROXY, "1");
 });
 

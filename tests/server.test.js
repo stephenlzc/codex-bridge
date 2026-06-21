@@ -366,6 +366,94 @@ test("missing provider API key returns a clear client configuration error", asyn
   }
 });
 
+test("provider API keys saved after router start are loaded from secrets file", async () => {
+  const originalZhipu = process.env.ZHIPUAI_API_KEY;
+  const originalSecretsFile = process.env.CODEXBRIDGE_SECRETS_FILE;
+  delete process.env.ZHIPUAI_API_KEY;
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-secrets-"));
+  const secretsFile = path.join(tempDir, "secrets.local.json");
+  process.env.CODEXBRIDGE_SECRETS_FILE = secretsFile;
+
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    assert.equal(req.headers.authorization, "Bearer zhipu-provider-key");
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "chatcmpl_dynamic_secret",
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "dynamic secret accepted",
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.2",
+    models: [
+      {
+        id: "gpt-5.2",
+        displayName: "GLM-4.6",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "glm-4.6",
+        authMode: "api_key",
+        apiKeyEnv: "ZHIPUAI_API_KEY",
+      },
+    ],
+  });
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  fs.writeFileSync(
+    secretsFile,
+    JSON.stringify({ ZHIPUAI_API_KEY: "zhipu-provider-key" }),
+    "utf8",
+  );
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2",
+        input: "hello",
+      }),
+    });
+    assert.equal(response.output_text, "dynamic secret accepted");
+  } finally {
+    await close(router);
+    await close(upstream);
+    if (originalZhipu === undefined) {
+      delete process.env.ZHIPUAI_API_KEY;
+    } else {
+      process.env.ZHIPUAI_API_KEY = originalZhipu;
+    }
+    if (originalSecretsFile === undefined) {
+      delete process.env.CODEXBRIDGE_SECRETS_FILE;
+    } else {
+      process.env.CODEXBRIDGE_SECRETS_FILE = originalSecretsFile;
+    }
+  }
+});
+
 test("server reloads router config file before authorizing requests", async () => {
   const upstream = http.createServer(async (req, res) => {
     assert.equal(req.url, "/v1/responses");

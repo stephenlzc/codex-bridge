@@ -66,9 +66,23 @@ export function apiKeyForRoute(route) {
     return route.apiKey;
   }
   if (route.apiKeyEnv) {
-    return process.env[route.apiKeyEnv];
+    return process.env[route.apiKeyEnv] || secretFileValue(route.apiKeyEnv);
   }
   return undefined;
+}
+
+function secretFileValue(keyEnv) {
+  const secretsFile = process.env.CODEXBRIDGE_SECRETS_FILE;
+  if (!secretsFile || !fs.existsSync(secretsFile)) {
+    return undefined;
+  }
+  try {
+    const secrets = JSON.parse(fs.readFileSync(secretsFile, "utf8"));
+    const value = secrets?.[keyEnv];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function authModeForRoute(route) {

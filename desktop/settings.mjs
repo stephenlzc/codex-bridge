@@ -151,6 +151,7 @@ export function routerRuntimeEnv(rootDir, baseEnv = process.env) {
   const env = envWithSecrets(rootDir, {
     ...baseEnv,
     ROUTER_CONFIG: routerConfigPath(rootDir),
+    CODEXBRIDGE_SECRETS_FILE: secretsPath(rootDir),
   });
   if (loadDesktopOptions(rootDir).bypassSystemProxy) {
     env.CODEXBRIDGE_DISABLE_SYSTEM_PROXY = "1";
