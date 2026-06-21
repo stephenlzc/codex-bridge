@@ -63,11 +63,19 @@ document.querySelector("#initializeCodex").addEventListener("click", (event) =>
   }),
 );
 
+document.querySelector("#restoreCodexConfig").addEventListener("click", (event) =>
+  runAction(event.currentTarget, async () => {
+    const result = await api.restoreCodexConfig();
+    await refresh();
+    showToast(result?.backup ? "已初始化为 CodexBridge 写入前的 Codex 配置。" : "Codex 配置无需初始化。");
+  }),
+);
+
 document.querySelector("#recoverHistoryAccess").addEventListener("click", (event) =>
   runAction(event.currentTarget, async () => {
     const result = await api.recoverHistoryAccess();
     await refresh();
-    showToast(result?.message || "已恢复 CodexBridge 写入前的 Codex 配置。请重启 Codex 查看历史对话。");
+    showToast(result?.message || "已开启历史对话显示；当前 CodexBridge 配置保持不变。");
   }),
 );
 

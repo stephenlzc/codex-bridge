@@ -38,6 +38,7 @@
             <p>把 GPT、DeepSeek、Kimi 和更多模型放进同一个 Codex 模型栏。</p>
           </div>
           <div class="status-cluster">
+            <button class="ghost-button light small" id="restoreCodexConfig">初始化 Codex 配置</button>
             <button class="ghost-button light small" id="recoverHistoryAccess">找回历史对话</button>
             <span class="status-pill muted" id="routerStatus">Router 未启动</span>
             <span class="status-pill muted" id="modeStatus">读取中</span>
@@ -90,7 +91,7 @@
                   <small>遇到 502、fetch failed 或 VPN/代理冲突时可开启；只影响 CodexBridge Router。</small>
                 </span>
               </label>
-              <p class="helper-copy">常规流程：选模型、填密钥、更新配置、启动 Router，然后手动关闭并重新打开 Codex。右上角“找回历史对话”会恢复 CodexBridge 写入前的配置，帮助 Codex 显示原来的会话列表。</p>
+              <p class="helper-copy">常规流程：选模型、填密钥、更新配置、启动 Router，然后手动关闭并重新打开 Codex。右上角“找回历史对话”只会开启历史对话显示，不会把 CodexBridge 模型配置退回切换前。</p>
             </article>
           </div>
 

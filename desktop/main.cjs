@@ -308,9 +308,9 @@ ipcMain.handle("codex:restore", async () => {
 ipcMain.handle("codex:recover-history", async () => {
   const settings = await loadSettings();
   const result = settings.recoverCodexHistoryAccess();
-  appendLog(`Recovered Codex history access from backup: ${result.backup}`);
+  appendLog(`Updated Codex history access: ${result.target}`);
   if (result.currentBackup) {
-    appendLog(`Current CodexBridge config backed up before history recovery: ${result.currentBackup}`);
+    appendLog(`Current CodexBridge config backed up before history access update: ${result.currentBackup}`);
   }
   appendLog(result.nextStep);
   broadcastState();
@@ -660,6 +660,7 @@ async function runDesktopSmokeChecks() {
       (async () => {
         const required = [
           "#initializeCodex",
+          "#restoreCodexConfig",
           "#recoverHistoryAccess",
           "#routerToggle",
           "#healthStatus",

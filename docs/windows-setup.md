@@ -126,7 +126,7 @@ model_provider = "codex-bridge"
 model = "gpt-5.5"
 model_catalog_json = "F:/game_code/router/model-catalog.json"
 model_reasoning_effort = "medium"
-disable_response_storage = true
+disable_response_storage = false
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -146,7 +146,7 @@ model_provider = "codex-bridge"
 model = "gpt-5.5"
 model_catalog_json = "F:/game_code/router/model-catalog.json"
 model_reasoning_effort = "medium"
-disable_response_storage = true
+disable_response_storage = false
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 

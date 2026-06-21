@@ -445,7 +445,7 @@ export function buildCodexToml({
     `model = "${model}"`,
     `model_catalog_json = "${normalizedCatalogPath}"`,
     'model_reasoning_effort = "medium"',
-    "disable_response_storage = true",
+    "disable_response_storage = false",
     'network_access = "enabled"',
     "windows_wsl_setup_acknowledged = true",
     "",
@@ -520,13 +520,58 @@ export function restoreCodexConfig({ homeDir = os.homedir() } = {}) {
 }
 
 export function recoverCodexHistoryAccess({ homeDir = os.homedir() } = {}) {
-  const restored = restoreCodexConfig({ homeDir });
+  const target = codexConfigPath(homeDir);
+  if (!fs.existsSync(target)) {
+    throw new Error("没有找到 Codex 配置文件，无法自动开启历史对话显示。");
+  }
+
+  const content = fs.readFileSync(target, "utf8");
+  if (!isCodexBridgeToml(content)) {
+    return {
+      target,
+      currentBackup: null,
+      unchanged: true,
+      action: "recover_history_access",
+      message: "当前 Codex 配置不是 CodexBridge 配置，无需调整。历史对话应由当前 Codex 配置自行显示。",
+      nextStep: "请完全退出并重启 Codex。若还要使用 CodexBridge，请回到本应用点击“更新 Codex 配置”并打开 Router。",
+    };
+  }
+
+  const nextContent = enableResponseStorage(content);
+  let currentBackup = null;
+  let unchanged = nextContent === content;
+  if (!unchanged) {
+    currentBackup = `${target}.history-access.${timestamp()}.bak`;
+    fs.copyFileSync(target, currentBackup);
+    fs.writeFileSync(target, nextContent, "utf8");
+  }
+
   return {
-    ...restored,
+    target,
+    currentBackup,
+    unchanged,
     action: "recover_history_access",
-    message: "已恢复 CodexBridge 写入前的 Codex 配置。重启 Codex 后，之前的历史对话通常会回到原来的列表视图。",
-    nextStep: "请完全退出并重启 Codex；如果之后还要使用 CodexBridge，再回到本应用点击“更新 Codex 配置”并打开 Router。",
+    message: unchanged
+      ? "历史对话显示已经是开启状态；当前 CodexBridge 配置没有被改回旧配置。"
+      : "已开启历史对话显示，并保留当前 CodexBridge 模型与 Router 配置。",
+    nextStep: "请完全退出并重启 Codex；模型栏仍会继续使用 CodexBridge 当前配置。",
   };
+}
+
+function enableResponseStorage(content) {
+  if (/^\s*disable_response_storage\s*=/m.test(content)) {
+    return content.replace(
+      /^(\s*disable_response_storage\s*=\s*)true(\s*(?:#.*)?)$/m,
+      "$1false$2",
+    );
+  }
+  const lines = content.split(/\r?\n/);
+  const insertAt = lines.findIndex((line) => /^\s*network_access\s*=/.test(line));
+  if (insertAt >= 0) {
+    lines.splice(insertAt, 0, "disable_response_storage = false");
+    return lines.join("\n");
+  }
+  return `${content.trimEnd()}\ndisable_response_storage = false\n`;
 }
 
 function preferredRestoreBackup(backups) {

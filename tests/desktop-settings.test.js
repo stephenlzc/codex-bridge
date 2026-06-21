@@ -66,6 +66,17 @@ test("buildCodexToml uses OpenAI auth in hybrid mode", () => {
   assert.doesNotMatch(toml, /experimental_bearer_token/);
 });
 
+test("buildCodexToml keeps Codex response storage enabled for history", () => {
+  const toml = buildCodexToml({
+    rootDir: path.join(os.tmpdir(), "codex-bridge-router"),
+    mode: MODE_HYBRID,
+    port: 15722,
+  });
+
+  assert.match(toml, /disable_response_storage = false/);
+  assert.doesNotMatch(toml, /disable_response_storage = true/);
+});
+
 test("saveSecrets records only non-empty values", () => {
   const rootDir = makeTempProject();
   saveSecrets(rootDir, {
@@ -674,7 +685,7 @@ test("restoreCodexConfig explains when no backup exists", () => {
   assert.throws(() => restoreCodexConfig({ homeDir }), /没有找到 CodexBridge 写入前的备份/);
 });
 
-test("recoverCodexHistoryAccess restores the pre-Bridge config with user guidance", () => {
+test("recoverCodexHistoryAccess keeps CodexBridge config and only enables history storage", () => {
   const rootDir = makeTempProject();
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
   const codexDir = path.join(homeDir, ".codex");
@@ -683,12 +694,18 @@ test("recoverCodexHistoryAccess restores the pre-Bridge config with user guidanc
   fs.writeFileSync(target, 'model = "original-history-view"\n', "utf8");
 
   applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  let current = fs.readFileSync(target, "utf8");
+  current = current.replace("disable_response_storage = false", "disable_response_storage = true # old history toggle");
+  fs.writeFileSync(target, current, "utf8");
 
   const recovered = recoverCodexHistoryAccess({ homeDir });
+  const written = fs.readFileSync(target, "utf8");
 
   assert.equal(recovered.action, "recover_history_access");
   assert.equal(recovered.target, target);
-  assert.match(fs.readFileSync(target, "utf8"), /original-history-view/);
+  assert.match(written, /model_provider = "codex-bridge"/);
+  assert.match(written, /disable_response_storage = false/);
+  assert.doesNotMatch(written, /original-history-view/);
   assert.match(recovered.message, /历史对话/);
   assert.match(recovered.nextStep, /重启 Codex/);
   assert.ok(recovered.currentBackup, "current CodexBridge config should be backed up before recovery");

@@ -140,7 +140,7 @@ button:disabled {
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 24px;
@@ -182,6 +182,12 @@ h3 {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+  max-width: 520px;
+}
+
+.status-cluster .ghost-button {
+  background: #fff;
 }
 
 .status-pill {
@@ -209,7 +215,8 @@ h3 {
 }
 
 .grid.two {
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  grid-template-columns: minmax(520px, 1fr) minmax(340px, 420px);
+  align-items: start;
 }
 
 .grid.three {
@@ -287,7 +294,12 @@ h3 {
 .run-panel {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 12px;
+}
+
+.run-panel .action-grid {
+  display: grid;
+  grid-template-columns: 1fr;
 }
 
 .router-toggle {
@@ -490,7 +502,7 @@ h3 {
 }
 
 .metric {
-  min-height: 118px;
+  min-height: 104px;
   padding: 14px;
 }
 
@@ -505,6 +517,13 @@ h3 {
   margin-top: 7px;
   font-size: 15px;
   overflow-wrap: anywhere;
+}
+
+#rootDir {
+  max-height: 48px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .metric p {
