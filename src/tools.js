@@ -9,6 +9,7 @@ export function buildToolContext(responseTools = []) {
     chatTools: [],
     customToolNames: new Set(),
     specialToolTypes: new Map(),
+    chatToolNames: new Set(),
     chatNameToResponseName: new Map(),
     responseNameToChatName: new Map(),
   };
@@ -141,7 +142,7 @@ function appendResponseTool(context, tool) {
     const name = tool.name || "tool_search";
     const chatName = chatNameForResponseName(context, name);
     context.specialToolTypes.set(name, "tool_search_call");
-    context.chatTools.push({
+    appendChatTool(context, chatName, {
       type: "function",
       function: {
         name: chatName,
@@ -162,7 +163,7 @@ function appendResponseTool(context, tool) {
     const name = tool.name || "custom_tool";
     const chatName = chatNameForResponseName(context, name);
     context.customToolNames.add(name);
-    context.chatTools.push({
+    appendChatTool(context, chatName, {
       type: "function",
       function: {
         name: chatName,
@@ -190,7 +191,7 @@ function appendResponseTool(context, tool) {
     return;
   }
   const chatName = chatNameForResponseName(context, fn.name);
-  context.chatTools.push({
+  appendChatTool(context, chatName, {
     type: "function",
     function: {
       name: chatName,
@@ -201,6 +202,14 @@ function appendResponseTool(context, tool) {
       },
     },
   });
+}
+
+function appendChatTool(context, chatName, chatTool) {
+  if (context.chatToolNames.has(chatName)) {
+    return;
+  }
+  context.chatToolNames.add(chatName);
+  context.chatTools.push(chatTool);
 }
 
 function normalizeFunctionTool(tool) {

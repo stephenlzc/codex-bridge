@@ -381,3 +381,48 @@ test("namespace tools are flattened for chat providers", () => {
   assert.equal(converted.body.tools.length, 1);
   assert.equal(converted.body.tools[0].function.name, "demo_read");
 });
+
+test("chat conversion deduplicates repeated tool names for strict providers", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: "hello",
+      tools: [
+        {
+          type: "function",
+          name: "shell_command",
+          description: "Run shell",
+          parameters: { type: "object", properties: {} },
+        },
+        {
+          type: "namespace",
+          name: "mcp__duplicate__",
+          tools: [
+            {
+              type: "function",
+              name: "shell_command",
+              description: "Run shell from namespace",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+        {
+          type: "custom",
+          name: "apply_patch",
+          description: "Edit files.",
+        },
+        {
+          type: "custom",
+          name: "apply_patch",
+          description: "Edit files again.",
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.deepEqual(
+    converted.body.tools.map((tool) => tool.function.name),
+    ["shell_command", "apply_patch"],
+  );
+});
