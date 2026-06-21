@@ -90,6 +90,10 @@ This creates `model-catalog.json`.
 npm start
 ```
 
+The desktop app starts Router after refreshing the router config, Codex config, and model catalog. Normal users should use the desktop app instead of running these commands manually.
+
+桌面应用启动 Router 前会自动刷新路由配置、Codex 配置和模型目录。普通用户建议直接使用桌面应用，不要手动跑这些命令。
+
 Default local endpoint:
 
 默认本地地址：
@@ -211,3 +215,17 @@ PowerShell 注意：
 - 账号被限速。
 - 降低并发请求。
 - 等一会儿再试。
+
+### Codex shows 502 / Codex 显示 502
+
+Open the CodexBridge log page first.
+
+先打开 CodexBridge 的日志页。
+
+- No `access POST /v1/responses`: Codex did not reach Router. Start Router again from CodexBridge, then restart Codex.
+- Has `access POST /v1/responses`: the request reached Router. Read the next `req_... -> upstream` and `req_... !! upstream` lines to see the real provider, model, proxy, status, and upstream message.
+- All models fail with 502 and there is no access log: usually stale Codex config or a Windows proxy/VPN intercepting local traffic. Current releases write `http://localhost:15722/v1` when Router starts.
+
+- 没有 `access POST /v1/responses`：Codex 没有打到 Router。请从 CodexBridge 重新启动 Router，然后重启 Codex。
+- 有 `access POST /v1/responses`：请求已经进 Router。继续看后面的 `req_... -> upstream` 和 `req_... !! upstream`，确认真实 provider、真实模型、代理、状态码和上游错误。
+- 所有模型都 502 且没有 access 日志：通常是 Codex 配置仍是旧的，或 Windows 代理/VPN 接管了本地流量。当前版本启动 Router 时会写入 `http://localhost:15722/v1`。

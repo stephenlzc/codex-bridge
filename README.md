@@ -150,6 +150,10 @@ The app opens the CodexBridge window directly. In the window, choose a billing m
 
 应用会直接打开 CodexBridge 窗口。你可以在窗口里选择计费模式、选择最多 5 个模型、填写 API Key、更新 Codex 配置并启动 Router。
 
+Starting Router from the desktop app also refreshes the Codex config and model catalog, so users do not need to click setup buttons in a strict order.
+
+从桌面应用启动 Router 时，会自动刷新 Codex 配置和模型目录，普通用户不需要严格按按钮顺序操作。
+
 For development, you can also run:
 
 开发时也可以运行：
@@ -271,6 +275,20 @@ curl.exe http://127.0.0.1:15722/model-catalog.json
 In PowerShell, use `curl.exe` instead of `curl` because `curl` is usually an alias for `Invoke-WebRequest`.
 
 PowerShell 里建议使用 `curl.exe`，因为 `curl` 通常是 `Invoke-WebRequest` 的别名。
+
+## Troubleshooting 502 / 502 排查
+
+If Codex shows `502 Bad Gateway`, open the CodexBridge log page first.
+
+如果 Codex 显示 `502 Bad Gateway`，请先打开 CodexBridge 的日志页。
+
+- If there is no `access POST /v1/responses` line, Codex did not reach Router. Restart CodexBridge, start Router again, then restart Codex.
+- If `access POST /v1/responses` appears, the request reached Router. Check the following `req_... -> upstream` and `req_... !! upstream` lines for the real provider, model, proxy, status, and upstream message.
+- If every model fails with 502 and there is no access log, the usual cause is stale Codex config or a Windows proxy/VPN intercepting local traffic. Current releases write `http://localhost:15722/v1` automatically when Router starts.
+
+- 如果没有 `access POST /v1/responses`，说明 Codex 没有打到 Router。请重启 CodexBridge，重新启动 Router，再重启 Codex。
+- 如果出现了 `access POST /v1/responses`，说明请求已经进 Router。继续看后面的 `req_... -> upstream` 和 `req_... !! upstream`，里面会显示真实 provider、真实模型、代理、状态码和上游错误。
+- 如果所有模型都 502 且没有 access 日志，常见原因是 Codex 配置仍是旧的，或 Windows 代理/VPN 接管了本地流量。当前版本在启动 Router 时会自动写入 `http://localhost:15722/v1`。
 
 ## Safety / 安全说明
 

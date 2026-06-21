@@ -263,6 +263,24 @@ export function buildRouterConfigFromSelection(rootDir, mode = MODE_HYBRID) {
   };
 }
 
+export function prepareRouterStartConfig({
+  rootDir,
+  mode = MODE_HYBRID,
+  homeDir = os.homedir(),
+} = {}) {
+  if (!rootDir) {
+    throw new Error("rootDir is required.");
+  }
+  const config = writeRouterConfigFromSelection(rootDir, mode);
+  const codex = applyCodexConfig({
+    rootDir,
+    mode,
+    port: config.port || 15722,
+    homeDir,
+  });
+  return { config, codex };
+}
+
 export function buildCodexToml({
   rootDir,
   mode,
@@ -303,6 +321,11 @@ export function applyCodexConfig({
   const target = codexConfigPath(homeDir);
   const targetDir = path.dirname(target);
   fs.mkdirSync(targetDir, { recursive: true });
+  const content = buildCodexToml({ rootDir, mode, port });
+
+  if (fs.existsSync(target) && fs.readFileSync(target, "utf8") === content) {
+    return { target, backup: null, unchanged: true };
+  }
 
   let backup = null;
   if (fs.existsSync(target)) {
@@ -310,8 +333,8 @@ export function applyCodexConfig({
     fs.copyFileSync(target, backup);
   }
 
-  fs.writeFileSync(target, buildCodexToml({ rootDir, mode, port }), "utf8");
-  return { target, backup };
+  fs.writeFileSync(target, content, "utf8");
+  return { target, backup, unchanged: false };
 }
 
 export function restoreCodexConfig({ homeDir = os.homedir() } = {}) {

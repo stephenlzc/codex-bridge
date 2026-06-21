@@ -292,7 +292,25 @@ ipcMain.handle("router:start", async () => {
   const settings = await loadSettings();
   const config = settings.readRouterConfig(dataRootDir);
   const mode = settings.detectModeFromConfig(config);
-  settings.writeRouterConfigFromSelection(dataRootDir, mode);
+  const prepared = settings.prepareRouterStartConfig({
+    rootDir: dataRootDir,
+    mode,
+  });
+  appendLog(
+    prepared.codex.unchanged
+      ? `Codex config already current: ${prepared.codex.target}`
+      : `Updated Codex config before Router start: ${prepared.codex.target}`,
+  );
+  if (prepared.codex.backup) {
+    appendLog(`Backup created: ${prepared.codex.backup}`);
+  }
+  const catalogResult = await runNodeScript([
+    scriptPath("scripts/generate-catalog.js"),
+    settings.catalogPath(dataRootDir),
+  ]);
+  if (!catalogResult.ok) {
+    throw new Error(catalogResult.output || "Failed to generate model catalog.");
+  }
   const nodePath = nodeExecutable();
   routerProcess = spawn(nodePath, [scriptPath("src/server.js")], {
     cwd: appRootDir,

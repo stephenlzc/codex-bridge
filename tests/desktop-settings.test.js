@@ -13,6 +13,7 @@ import {
   detectModeFromConfig,
   ensureRouterConfig,
   providerCatalog,
+  prepareRouterStartConfig,
   readCustomModels,
   restoreCodexConfig,
   saveCustomModel,
@@ -419,6 +420,53 @@ test("applyCodexConfig writes config and creates backup", () => {
   assert.match(written, /requires_openai_auth = true/);
   assert.equal(result.target, target);
   assert.equal(fs.existsSync(result.backup), true);
+});
+
+test("applyCodexConfig skips backup when Codex config is already current", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(target, buildCodexToml({ rootDir, mode: MODE_HYBRID }), "utf8");
+
+  const result = applyCodexConfig({
+    rootDir,
+    mode: MODE_HYBRID,
+    homeDir,
+  });
+
+  assert.equal(result.target, target);
+  assert.equal(result.backup, null);
+  assert.equal(fs.readdirSync(codexDir).filter((name) => name.includes(".bak")).length, 0);
+});
+
+test("prepareRouterStartConfig refreshes stale Codex local endpoint before router starts", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(
+    target,
+    [
+      'model_provider = "codex-bridge"',
+      'model_catalog_json = "C:/old/model-catalog.json"',
+      "[model_providers.codex-bridge]",
+      'base_url = "http://127.0.0.1:15722/v1"',
+      'wire_api = "responses"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  saveSelection(rootDir, ["codex-gpt-5-5", "deepseek-v4-pro"], MODE_HYBRID);
+
+  const result = prepareRouterStartConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+
+  const written = fs.readFileSync(target, "utf8");
+  assert.equal(result.config.defaultModel, "gpt-5.5");
+  assert.match(written, /base_url = "http:\/\/localhost:15722\/v1"/);
+  assert.doesNotMatch(written, /http:\/\/127\.0\.0\.1:15722\/v1/);
 });
 
 test("restoreCodexConfig restores the latest CodexBridge backup", () => {
