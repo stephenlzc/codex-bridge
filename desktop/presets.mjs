@@ -178,8 +178,8 @@ export const PROVIDERS = [
 ];
 
 export const MODEL_PRESETS = [
-  route("codex-gpt-5-5", "codex", "GPT-5.5", "gpt-5.5", "responses", 1000000),
-  route("codex-gpt-5-4", "codex", "GPT-5.4", "gpt-5.4", "responses", 1000000),
+  route("codex-gpt-5-5", "codex", "GPT-5.5", "gpt-5.5", "responses", 1000000, codexFastMode()),
+  route("codex-gpt-5-4", "codex", "GPT-5.4", "gpt-5.4", "responses", 1000000, codexFastMode()),
   route("codex-gpt-5-4-mini", "codex", "GPT-5.4-Mini", "gpt-5.4-mini", "responses", 1000000),
   route("openai-gpt-4-1", "openai", "OpenAI GPT-4.1", "gpt-4.1", "responses", 1047576),
   route("openai-gpt-4-1-mini", "openai", "OpenAI GPT-4.1 Mini", "gpt-4.1-mini", "responses", 1047576),
@@ -302,6 +302,20 @@ function route(presetId, providerId, displayName, model, api, contextWindow, ext
 function imageInput(extra = {}) {
   return {
     inputModalities: ["text", "image"],
+    ...extra,
+  };
+}
+
+function codexFastMode(extra = {}) {
+  return {
+    additionalSpeedTiers: ["fast"],
+    serviceTiers: [
+      {
+        id: "priority",
+        name: "Fast",
+        description: "1.5x speed, increased usage",
+      },
+    ],
     ...extra,
   };
 }

@@ -154,6 +154,24 @@ test("vision-capable presets advertise image input and text-only presets stay te
   assert.equal(byId.get("qwen3-coder-plus")?.inputModalities, undefined);
 });
 
+test("native GPT subscription presets advertise Codex fast mode", () => {
+  const byId = new Map(MODEL_PRESETS.map((model) => [model.presetId, model]));
+  const fastTier = [
+    {
+      id: "priority",
+      name: "Fast",
+      description: "1.5x speed, increased usage",
+    },
+  ];
+
+  for (const presetId of ["codex-gpt-5-5", "codex-gpt-5-4"]) {
+    assert.deepEqual(byId.get(presetId)?.additionalSpeedTiers, ["fast"]);
+    assert.deepEqual(byId.get(presetId)?.serviceTiers, fastTier);
+  }
+  assert.equal(byId.get("codex-gpt-5-4-mini")?.serviceTiers, undefined);
+  assert.equal(byId.get("openai-gpt-4-1")?.serviceTiers, undefined);
+});
+
 test("built-in catalog does not recommend the private Fenno GPT provider", () => {
   const providers = providerCatalog(makeTempProject());
   const providerIds = new Set(providers.map((provider) => provider.id));
@@ -186,6 +204,25 @@ test("buildRouterConfigFromSelection maps selected models into five Codex slots"
   ]);
   assert.equal(config.models[2].displayName, "DeepSeek V4 Pro");
   assert.equal(config.models[4].displayName, "Kimi K2.7 Code");
+});
+
+test("buildRouterConfigFromSelection preserves native GPT speed tiers", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, ["codex-gpt-5-5", "codex-gpt-5-4"]);
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.deepEqual(config.models[0].additionalSpeedTiers, ["fast"]);
+  assert.deepEqual(config.models[0].serviceTiers, [
+    {
+      id: "priority",
+      name: "Fast",
+      description: "1.5x speed, increased usage",
+    },
+  ]);
+  assert.deepEqual(config.models[1].additionalSpeedTiers, ["fast"]);
+  assert.equal(config.models[0].id, "gpt-5.5");
+  assert.equal(config.models[1].id, "gpt-5.4");
 });
 
 test("domestic model presets route with their own provider keys", () => {

@@ -409,6 +409,8 @@ function routeForSelectedModel(model, slot, priority) {
     "inputModalities",
     "defaultReasoningLevel",
     "supportedReasoningLevels",
+    "additionalSpeedTiers",
+    "serviceTiers",
   ]) {
     if (model[key] !== undefined) {
       route[key] = model[key];

@@ -21,6 +21,16 @@
       "model": "gpt-5.5",
       "authMode": "codex_openai",
       "contextWindow": 1000000,
+      "additionalSpeedTiers": [
+        "fast"
+      ],
+      "serviceTiers": [
+        {
+          "id": "priority",
+          "name": "Fast",
+          "description": "1.5x speed, increased usage"
+        }
+      ],
       "priority": 0
     },
     {
@@ -32,6 +42,16 @@
       "model": "gpt-5.4",
       "authMode": "codex_openai",
       "contextWindow": 1000000,
+      "additionalSpeedTiers": [
+        "fast"
+      ],
+      "serviceTiers": [
+        {
+          "id": "priority",
+          "name": "Fast",
+          "description": "1.5x speed, increased usage"
+        }
+      ],
       "priority": 1
     },
     {
