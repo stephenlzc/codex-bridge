@@ -124,13 +124,12 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            Win users / Win 用户:
+            Windows:
             https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-Windows-x64-Portable.zip
 
-            Mac users / Mac 用户:
-            Apple Silicon:
+            Mac M series:
             https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-macOS-arm64-Portable.zip
 
-            Intel Mac:
+            Mac Intel:
             https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-macOS-x64-Portable.zip
           files: dist-artifacts/*.zip

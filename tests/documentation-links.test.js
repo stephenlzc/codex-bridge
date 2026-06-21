@@ -35,10 +35,21 @@ test("user-facing docs separate Win users and Mac users", () => {
     path.join("docs", "windows-setup.md"),
   ]) {
     const text = fs.readFileSync(path.join(process.cwd(), file), "utf8");
-    assert.match(text, /Win 用户|Win users/, `${file} should name Win users`);
-    assert.match(text, /Mac 用户|Mac users/, `${file} should name Mac users`);
+    assert.match(text, /Win 用户|Win users|Windows/, `${file} should name Win or Windows users`);
+    assert.match(text, /Mac 用户|Mac users|Mac/, `${file} should name Mac users`);
     assert.doesNotMatch(text, /普通用户|Normal users/i, `${file} should not say normal users`);
     assert.doesNotMatch(text, /高级用户|Advanced users/i, `${file} should not say advanced users`);
+  }
+});
+
+test("top-level download sections use simple platform labels", () => {
+  for (const file of ["README.md", path.join("docs", "releases.md")]) {
+    const text = fs.readFileSync(path.join(process.cwd(), file), "utf8");
+    assert.match(text, /- Windows: \[CodexBridge-Windows-x64-Portable\.zip\]/, `${file} should use a simple Windows label`);
+    assert.match(text, /- Mac M series: \[CodexBridge-macOS-arm64-Portable\.zip\]/, `${file} should use a simple Mac M label`);
+    assert.match(text, /- Mac Intel: \[CodexBridge-macOS-x64-Portable\.zip\]/, `${file} should use a simple Mac Intel label`);
+    assert.doesNotMatch(text, /Win users\s*\/\s*Win/i, `${file} should not duplicate Win labels`);
+    assert.doesNotMatch(text, /Mac users\s*\/\s*Mac/i, `${file} should not duplicate Mac labels`);
   }
 });
 

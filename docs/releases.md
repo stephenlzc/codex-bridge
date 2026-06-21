@@ -2,16 +2,9 @@
 
 ## Latest Download / 最新下载
 
-Win users / Win 用户:
-
-Windows 免安装包：
-
-[CodexBridge-Windows-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip)
-
-Mac users / Mac 用户:
-
-- Apple Silicon: [CodexBridge-macOS-arm64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-arm64-Portable.zip)
-- Intel Mac: [CodexBridge-macOS-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-x64-Portable.zip)
+- Windows: [CodexBridge-Windows-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip)
+- Mac M series: [CodexBridge-macOS-arm64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-arm64-Portable.zip)
+- Mac Intel: [CodexBridge-macOS-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-x64-Portable.zip)
 
 Release history:
 
@@ -66,4 +59,4 @@ git push origin v0.1.10
 
 GitHub Actions builds the Windows portable zip and both macOS portable zips, then attaches them to the same release.
 
-GitHub Actions 会构建 Windows 免安装包，并把 zip 附加到 release。
+GitHub Actions 会构建 Windows 和 macOS 免安装包，并把 zip 附加到 release。
