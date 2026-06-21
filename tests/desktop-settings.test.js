@@ -118,12 +118,23 @@ test("provider catalog uses the current Kimi API key console", () => {
   assert.equal(kimi.keyUrl, "https://platform.kimi.com/console/api-keys");
 });
 
+test("provider catalog uses the domestic MiniMax platform", () => {
+  const minimax = providerCatalog(makeTempProject()).find((provider) => provider.id === "minimax");
+
+  assert.equal(minimax.keyUrl, "https://www.minimaxi.com/");
+  assert.equal(minimax.docsUrl, "https://platform.minimaxi.com/docs/api-reference/text-openai-api");
+  assert.equal(minimax.baseUrl, "https://api.minimaxi.com/v1");
+  assert.equal(minimax.keyUrl.includes("minimax.io"), false);
+  assert.equal(minimax.docsUrl.includes("minimax.io"), false);
+  assert.equal(minimax.baseUrl.includes("minimax.io"), false);
+});
+
 test("provider catalog includes additional domestic OpenAI-compatible providers", () => {
   const providers = providerCatalog(makeTempProject());
   const byId = new Map(providers.map((provider) => [provider.id, provider]));
 
   assert.equal(byId.get("xiaomi")?.baseUrl, "https://api.xiaomimimo.com/v1");
-  assert.equal(byId.get("minimax")?.baseUrl, "https://api.minimax.io/v1");
+  assert.equal(byId.get("minimax")?.baseUrl, "https://api.minimaxi.com/v1");
   assert.equal(byId.get("stepfun")?.baseUrl, "https://api.stepfun.ai/step_plan/v1");
   assert.equal(byId.get("qianfan")?.baseUrl, "https://api.baiduqianfan.ai/v1");
   assert.equal(byId.get("hunyuan")?.baseUrl, "https://api.hunyuan.cloud.tencent.com/v1");
