@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   MODE_ALL_API,
   MODE_HYBRID,
+  MODEL_PRESETS,
   applyCodexConfig,
   buildRouterConfigFromSelection,
   buildCodexToml,
@@ -62,13 +63,19 @@ test("saveSecrets records only non-empty values", () => {
   });
 
   assert.deepEqual(secretStatus(rootDir), {
+    ARK_API_KEY: false,
     DASHSCOPE_API_KEY: false,
     FENNO_API_KEY: true,
     DEEPSEEK_API_KEY: false,
+    HUNYUAN_API_KEY: false,
+    MIMO_API_KEY: false,
+    MINIMAX_API_KEY: false,
     MOONSHOT_API_KEY: true,
     OPENAI_API_KEY: false,
     OPENROUTER_API_KEY: false,
+    QIANFAN_API_KEY: false,
     SILICONFLOW_API_KEY: false,
+    STEPFUN_API_KEY: false,
     ZHIPUAI_API_KEY: false,
   });
 
@@ -79,13 +86,19 @@ test("saveSecrets records only non-empty values", () => {
   });
 
   assert.deepEqual(secretStatus(rootDir), {
+    ARK_API_KEY: false,
     DASHSCOPE_API_KEY: false,
     FENNO_API_KEY: true,
     DEEPSEEK_API_KEY: true,
+    HUNYUAN_API_KEY: false,
+    MIMO_API_KEY: false,
+    MINIMAX_API_KEY: false,
     MOONSHOT_API_KEY: true,
     OPENAI_API_KEY: false,
     OPENROUTER_API_KEY: false,
+    QIANFAN_API_KEY: false,
     SILICONFLOW_API_KEY: false,
+    STEPFUN_API_KEY: false,
     ZHIPUAI_API_KEY: false,
   });
 });
@@ -105,6 +118,29 @@ test("provider catalog uses the current Kimi API key console", () => {
   const kimi = providerCatalog(makeTempProject()).find((provider) => provider.id === "kimi");
 
   assert.equal(kimi.keyUrl, "https://platform.kimi.com/console/api-keys");
+});
+
+test("provider catalog includes additional domestic OpenAI-compatible providers", () => {
+  const providers = providerCatalog(makeTempProject());
+  const byId = new Map(providers.map((provider) => [provider.id, provider]));
+
+  assert.equal(byId.get("xiaomi")?.baseUrl, "https://api.xiaomimimo.com/v1");
+  assert.equal(byId.get("minimax")?.baseUrl, "https://api.minimax.io/v1");
+  assert.equal(byId.get("stepfun")?.baseUrl, "https://api.stepfun.ai/step_plan/v1");
+  assert.equal(byId.get("qianfan")?.baseUrl, "https://api.baiduqianfan.ai/v1");
+  assert.equal(byId.get("hunyuan")?.baseUrl, "https://api.hunyuan.cloud.tencent.com/v1");
+  assert.equal(byId.get("volcengine")?.baseUrl, "https://ark.cn-beijing.volces.com/api/v3");
+});
+
+test("model presets include extra domestic coding and general models", () => {
+  const presetIds = new Set(MODEL_PRESETS.map((model) => model.presetId));
+
+  assert.ok(presetIds.has("xiaomi-mimo-v2-5-pro"));
+  assert.ok(presetIds.has("minimax-m3"));
+  assert.ok(presetIds.has("stepfun-step-3-7-flash"));
+  assert.ok(presetIds.has("qianfan-ernie-4-0-turbo-8k"));
+  assert.ok(presetIds.has("hunyuan-turbos-latest"));
+  assert.ok(presetIds.has("doubao-seed-1-8"));
 });
 
 test("buildRouterConfigFromSelection maps selected models into five Codex slots", () => {
@@ -130,6 +166,33 @@ test("buildRouterConfigFromSelection maps selected models into five Codex slots"
   ]);
   assert.equal(config.models[2].displayName, "DeepSeek V4 Pro");
   assert.equal(config.models[4].displayName, "Kimi K2.7 Code");
+});
+
+test("domestic model presets route with their own provider keys", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, [
+    "xiaomi-mimo-v2-5-pro",
+    "minimax-m3",
+    "stepfun-step-3-7-flash",
+    "qianfan-ernie-4-0-turbo-8k",
+    "hunyuan-turbos-latest",
+  ]);
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.deepEqual(
+    config.models.map((model) => model.apiKeyEnv),
+    [
+      "MIMO_API_KEY",
+      "MINIMAX_API_KEY",
+      "STEPFUN_API_KEY",
+      "QIANFAN_API_KEY",
+      "HUNYUAN_API_KEY",
+    ],
+  );
+  assert.equal(config.models[0].displayName, "MiMo V2.5 Pro");
+  assert.equal(config.models[1].model, "MiniMax-M3");
+  assert.equal(config.models[2].baseUrl, "https://api.stepfun.ai/step_plan/v1");
 });
 
 test("custom models can be saved and routed with their own API key env", () => {
