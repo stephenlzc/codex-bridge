@@ -42,6 +42,47 @@ test("model catalog keeps Codex tool capability fields", () => {
   assert.equal(catalog.models[0].default_reasoning_level, "medium");
 });
 
+test("model catalog uses model context window for truncation instead of a 10k cap", () => {
+  const catalog = buildModelCatalog({
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        model: "gpt-5.5",
+        contextWindow: 1_000_000,
+        effectiveContextWindowPercent: 95,
+      },
+    ],
+    catalog: {
+      autoCompactPercent: 80,
+    },
+  });
+
+  assert.equal(catalog.models[0].truncation_policy.limit, 950_000);
+  assert.equal(catalog.models[0].auto_compact_token_limit, 800_000);
+});
+
+test("chat catalog exposes a bridge-sized context window to avoid Codex local overflow", () => {
+  const catalog = buildModelCatalog({
+    models: [
+      {
+        id: "gpt-5.2",
+        displayName: "ERNIE 4.0 Turbo 8K",
+        api: "chat_completions",
+        baseUrl: "http://example.test/v1",
+        model: "ernie-4.0-turbo-8k",
+        contextWindow: 8192,
+      },
+    ],
+  });
+
+  assert.equal(catalog.models[0].context_window, 1_000_000);
+  assert.equal(catalog.models[0].truncation_policy.limit, 950_000);
+  assert.equal(catalog.models[0].auto_compact_token_limit, 800_000);
+});
+
 test("chat catalog accepts standard Codex reasoning levels for model switching", () => {
   const catalog = buildModelCatalog({
     models: [
@@ -158,6 +199,37 @@ test("chat conversion preserves image_url content arrays", () => {
   ]);
 });
 
+test("chat conversion replaces oversized data images with text placeholders", () => {
+  const hugeDataUrl = `data:image/png;base64,${"a".repeat(2_100_000)}`;
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "describe this screenshot" },
+            {
+              type: "input_image",
+              image_url: hugeDataUrl,
+              detail: "high",
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.deepEqual(converted.body.messages.at(-1).content, [
+    { type: "text", text: "describe this screenshot" },
+    {
+      type: "text",
+      text: "[image input omitted because it is too large for this chat provider]",
+    },
+  ]);
+});
+
 test("chat conversion keeps file inputs visible when chat provider cannot forward them", () => {
   const converted = responsesToChatRequest(
     {
@@ -183,6 +255,106 @@ test("chat conversion keeps file inputs visible when chat provider cannot forwar
     converted.body.messages.at(-1).content,
     "summarize this file\n[file input not forwarded to chat provider: brief.pdf]",
   );
+});
+
+test("chat conversion trims old history to fit the upstream model context window", () => {
+  const history = new ResponseHistory();
+  history.record("resp_long", [
+    { role: "user", content: "old ".repeat(20_000) },
+    { role: "assistant", content: "old answer ".repeat(20_000) },
+    { role: "user", content: "recent context" },
+  ]);
+
+  const converted = responsesToChatRequest(
+    {
+      previous_response_id: "resp_long",
+      input: "current question",
+    },
+    {
+      ...route,
+      contextWindow: 2048,
+    },
+    history,
+  );
+
+  const allText = converted.body.messages
+    .map((message) => JSON.stringify(message.content))
+    .join("\n");
+  assert.doesNotMatch(allText, /old answer/);
+  assert.match(allText, /recent context/);
+  assert.match(allText, /current question/);
+});
+
+test("chat conversion keeps current input when system instructions exceed context budget", () => {
+  const converted = responsesToChatRequest(
+    {
+      instructions: "system instructions ".repeat(30_000),
+      input: "current question",
+    },
+    {
+      ...route,
+      contextWindow: 2048,
+    },
+    new ResponseHistory(),
+  );
+
+  const allText = converted.body.messages
+    .map((message) => JSON.stringify(message.content))
+    .join("\n");
+  assert.match(allText, /Earlier conversation history was omitted/);
+  assert.match(allText, /current question/);
+});
+
+test("chat conversion keeps unified history untrimmed when a small-context model trims its upstream payload", () => {
+  const criticalDetail = "critical architecture detail: unified raw history. ";
+  const history = new ResponseHistory();
+  history.record("resp_large", [
+    { role: "user", content: criticalDetail.repeat(500) },
+    { role: "assistant", content: "old answer ".repeat(500) },
+    { role: "user", content: "recent context" },
+  ]);
+
+  const small = responsesToChatRequest(
+    {
+      previous_response_id: "resp_large",
+      input: "small model question",
+    },
+    {
+      ...route,
+      contextWindow: 2048,
+    },
+    history,
+  );
+
+  const smallPayloadText = small.body.messages
+    .map((message) => JSON.stringify(message.content))
+    .join("\n");
+  assert.doesNotMatch(smallPayloadText, /critical architecture detail/);
+  assert.match(smallPayloadText, /small model question/);
+
+  history.record("resp_small", [
+    ...small.messagesForHistory,
+    { role: "assistant", content: "small answer" },
+  ]);
+
+  const large = responsesToChatRequest(
+    {
+      previous_response_id: "resp_small",
+      input: "large model question",
+    },
+    {
+      ...route,
+      contextWindow: 300_000,
+    },
+    history,
+  );
+
+  const largePayloadText = large.body.messages
+    .map((message) => JSON.stringify(message.content))
+    .join("\n");
+  assert.match(largePayloadText, /critical architecture detail/);
+  assert.match(largePayloadText, /small answer/);
+  assert.match(largePayloadText, /large model question/);
 });
 
 test("hybrid auth modes validate and default to api_key", () => {
@@ -431,10 +603,77 @@ test("namespace tools are flattened for chat providers", () => {
   );
 
   assert.equal(converted.body.tools.length, 1);
-  assert.equal(converted.body.tools[0].function.name, "demo_read");
+  assert.equal(converted.body.tools[0].function.name, "mcp__demo__demo_read");
 });
 
-test("chat conversion deduplicates repeated tool names for strict providers", () => {
+test("namespace tools keep unique names so MCP tools are not dropped", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: "use mcp",
+      tools: [
+        {
+          type: "namespace",
+          name: "mcp__filesystem__",
+          tools: [
+            {
+              type: "function",
+              name: "read",
+              description: "Read file",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+        {
+          type: "namespace",
+          name: "mcp__browser__",
+          tools: [
+            {
+              type: "function",
+              name: "read",
+              description: "Read page",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.deepEqual(
+    converted.body.tools.map((tool) => tool.function.name),
+    ["mcp__filesystem__read", "mcp__browser__read"],
+  );
+});
+
+test("non-function Codex tools with schemas are exposed to chat providers", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: "take screenshot",
+      tools: [
+        {
+          type: "computer_use",
+          name: "computer_screenshot",
+          description: "Capture the screen.",
+          parameters: {
+            type: "object",
+            properties: {
+              display_id: { type: "string" },
+            },
+          },
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  assert.equal(converted.body.tools.length, 1);
+  assert.equal(converted.body.tools[0].function.name, "computer_screenshot");
+});
+
+test("chat conversion deduplicates exact tool names while keeping namespaced tools", () => {
   const converted = responsesToChatRequest(
     {
       input: "hello",
@@ -475,7 +714,7 @@ test("chat conversion deduplicates repeated tool names for strict providers", ()
 
   assert.deepEqual(
     converted.body.tools.map((tool) => tool.function.name),
-    ["shell_command", "apply_patch"],
+    ["shell_command", "mcp__duplicate__shell_command", "apply_patch"],
   );
 });
 
@@ -523,6 +762,53 @@ test("kimi chat conversion rewrites legacy JSON schema refs to $defs", () => {
   assert.equal(parameters.properties.excludedBodyParts.items.$ref, "#/$defs/BodyPart");
   assert.deepEqual(parameters.$defs.BodyPart.enum, ["head", "arm", "leg"]);
   assert.equal(parameters.definitions, undefined);
+});
+
+test("kimi chat conversion inlines local property refs that Moonshot rejects", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: "use typed tool",
+      tools: [
+        {
+          type: "function",
+          name: "select_body_parts",
+          description: "Select body parts.",
+          parameters: {
+            type: "object",
+            properties: {
+              excludedBodyParts: {
+                type: "array",
+                items: {
+                  $ref: "#/properties/bodyPart",
+                },
+              },
+              bodyPart: {
+                type: "string",
+                enum: ["head", "arm", "leg"],
+              },
+            },
+          },
+        },
+      ],
+    },
+    {
+      ...route,
+      id: "gpt-5.2",
+      displayName: "Kimi K2.7 Code",
+      provider: "kimi",
+      model: "kimi-k2.7-code",
+      baseUrl: "https://api.moonshot.cn/v1",
+    },
+    new ResponseHistory(),
+  );
+
+  const parameters = converted.body.tools[0].function.parameters;
+  assert.equal(parameters.properties.excludedBodyParts.items.$ref, undefined);
+  assert.deepEqual(parameters.properties.excludedBodyParts.items.enum, [
+    "head",
+    "arm",
+    "leg",
+  ]);
 });
 
 test("minimax chat routes request separated reasoning output", () => {

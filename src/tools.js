@@ -123,14 +123,15 @@ export function isResponseToolOutputItem(item) {
   );
 }
 
-function appendResponseTool(context, tool) {
+function appendResponseTool(context, tool, namespace = "") {
   if (!tool || typeof tool !== "object") {
     return;
   }
 
   if (tool.type === "namespace") {
+    const nestedNamespace = namespaceToolPrefix(tool.name || namespace);
     for (const inner of tool.tools || []) {
-      appendResponseTool(context, inner);
+      appendResponseTool(context, inner, nestedNamespace);
     }
     return;
   }
@@ -140,7 +141,7 @@ function appendResponseTool(context, tool) {
   }
 
   if (tool.type === "tool_search") {
-    const name = tool.name || "tool_search";
+    const name = namespacedToolName(tool.name || "tool_search", namespace);
     const chatName = chatNameForResponseName(context, name);
     context.specialToolTypes.set(name, "tool_search_call");
     appendChatTool(context, chatName, {
@@ -161,7 +162,7 @@ function appendResponseTool(context, tool) {
   }
 
   if (tool.type === "custom") {
-    const name = tool.name || "custom_tool";
+    const name = namespacedToolName(tool.name || "custom_tool", namespace);
     const chatName = chatNameForResponseName(context, name);
     context.customToolNames.add(name);
     appendChatTool(context, chatName, {
@@ -191,7 +192,8 @@ function appendResponseTool(context, tool) {
   if (!fn?.name) {
     return;
   }
-  const chatName = chatNameForResponseName(context, fn.name);
+  const responseName = namespacedToolName(fn.name, namespace);
+  const chatName = chatNameForResponseName(context, responseName);
   appendChatTool(context, chatName, {
     type: "function",
     function: {
@@ -220,11 +222,34 @@ function appendChatTool(context, chatName, chatTool) {
   context.chatTools.push(chatTool);
 }
 
+function namespaceToolPrefix(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  return raw.endsWith("__") ? raw : `${raw}__`;
+}
+
+function namespacedToolName(name, namespace) {
+  const rawName = String(name || "").trim();
+  if (!namespace || !rawName) {
+    return rawName;
+  }
+  return rawName.startsWith(namespace) ? rawName : `${namespace}${rawName}`;
+}
+
 function normalizeFunctionTool(tool) {
   if (tool.type === "function" && tool.function) {
     return tool.function;
   }
   if (tool.type === "function") {
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    };
+  }
+  if (tool.name && (tool.parameters || tool.description)) {
     return {
       name: tool.name,
       description: tool.description,
@@ -250,11 +275,40 @@ function shouldUseMoonshotSchemaFlavor(route = {}) {
 }
 
 function normalizeMoonshotJsonSchema(value) {
+  return normalizeMoonshotJsonSchemaValue(value, value, new Set());
+}
+
+function normalizeMoonshotJsonSchemaValue(value, root, seenRefs) {
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeMoonshotJsonSchema(item));
+    return value.map((item) => normalizeMoonshotJsonSchemaValue(item, root, seenRefs));
   }
   if (!value || typeof value !== "object") {
     return value;
+  }
+
+  if (typeof value.$ref === "string") {
+    const rewrittenRef = moonshotRef(value.$ref);
+    const resolved = rewrittenRef.startsWith("#/$defs/")
+      ? null
+      : resolveJsonPointer(root, value.$ref);
+    if (resolved && resolved !== value && !seenRefs.has(value.$ref)) {
+      const nextSeenRefs = new Set(seenRefs);
+      nextSeenRefs.add(value.$ref);
+      const normalizedResolved = normalizeMoonshotJsonSchemaValue(
+        resolved,
+        root,
+        nextSeenRefs,
+      );
+      const siblingEntries = Object.entries(value).filter(([key]) => key !== "$ref");
+      if (siblingEntries.length === 0 || !isPlainObject(normalizedResolved)) {
+        return normalizedResolved;
+      }
+      const normalizedSiblings = {};
+      for (const [key, raw] of siblingEntries) {
+        normalizedSiblings[key] = normalizeMoonshotJsonSchemaValue(raw, root, seenRefs);
+      }
+      return { ...normalizedResolved, ...normalizedSiblings };
+    }
   }
 
   const result = {};
@@ -263,14 +317,14 @@ function normalizeMoonshotJsonSchema(value) {
 
   for (const [key, raw] of Object.entries(value)) {
     if (key === "definitions") {
-      legacyDefinitions = normalizeMoonshotJsonSchema(raw);
+      legacyDefinitions = normalizeMoonshotJsonSchemaValue(raw, root, seenRefs);
       continue;
     }
     if (key === "components" && raw && typeof raw === "object" && raw.schemas) {
       const { schemas, ...rest } = raw;
-      componentSchemas = normalizeMoonshotJsonSchema(schemas);
+      componentSchemas = normalizeMoonshotJsonSchemaValue(schemas, root, seenRefs);
       if (Object.keys(rest).length > 0) {
-        result.components = normalizeMoonshotJsonSchema(rest);
+        result.components = normalizeMoonshotJsonSchemaValue(rest, root, seenRefs);
       }
       continue;
     }
@@ -278,7 +332,7 @@ function normalizeMoonshotJsonSchema(value) {
       result.$ref = moonshotRef(raw);
       continue;
     }
-    result[key] = normalizeMoonshotJsonSchema(raw);
+    result[key] = normalizeMoonshotJsonSchemaValue(raw, root, seenRefs);
   }
 
   if (legacyDefinitions !== undefined) {
@@ -289,6 +343,21 @@ function normalizeMoonshotJsonSchema(value) {
   }
 
   return result;
+}
+
+function resolveJsonPointer(root, ref) {
+  if (!root || typeof ref !== "string" || !ref.startsWith("#/")) {
+    return null;
+  }
+  let current = root;
+  for (const segment of ref.slice(2).split("/")) {
+    const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (!current || typeof current !== "object" || !(key in current)) {
+      return null;
+    }
+    current = current[key];
+  }
+  return current;
 }
 
 function moonshotRef(value) {

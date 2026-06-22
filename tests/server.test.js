@@ -1273,6 +1273,104 @@ test("server accepts Codex Desktop response probes without an upstream call", as
   }
 });
 
+test("server accepts Codex Desktop response item probes without an upstream call", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamCalls += 1;
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected upstream call" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses/resp_probe`, {
+      method: "GET",
+      headers: {
+        authorization: "Bearer router-token",
+      },
+    });
+
+    assert.equal(response.id, "resp_probe");
+    assert.equal(response.object, "response");
+    assert.equal(response.status, "completed");
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("server accepts Codex Desktop response cancel probes without an upstream call", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamCalls += 1;
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected upstream call" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses/resp_probe/cancel`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer router-token",
+      },
+    });
+
+    assert.equal(response.id, "resp_probe");
+    assert.equal(response.object, "response");
+    assert.equal(response.status, "cancelled");
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("server accepts Codex Desktop model setting updates without an upstream call", async () => {
   let upstreamCalls = 0;
   const upstream = http.createServer((_req, res) => {
@@ -1326,6 +1424,204 @@ test("server accepts Codex Desktop model setting updates without an upstream cal
     await close(router);
     await close(upstream);
   }
+});
+
+test("server accepts Codex Desktop per-response model setting updates without an upstream call", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer((_req, res) => {
+    upstreamCalls += 1;
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected upstream call" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    for (const pathname of [
+      "/v1/responses/resp_new_thread",
+      "/responses/resp_new_thread",
+      "/v1/responses/resp_new_thread/model_settings",
+      "/responses/resp_new_thread/model_settings",
+    ]) {
+      for (const method of ["PATCH", "PUT"]) {
+        const response = await fetchJson(`${baseUrl}${pathname}`, {
+          method,
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer codex-openai-token",
+          },
+          body: JSON.stringify({
+            model: "gpt-5.4-mini",
+            reasoning_effort: "xhigh",
+          }),
+        });
+
+        assert.equal(response.ok, true);
+        assert.equal(response.model, "gpt-5.4-mini");
+        assert.equal(response.model_reasoning_effort, "xhigh");
+      }
+    }
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("responses route history is available after switching to a chat-completions model", async () => {
+  const chatBodies = [];
+  const upstream = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+
+    if (req.url === "/v1/responses") {
+      const body = JSON.parse(bodyText);
+      assert.equal(body.model, "gpt-5.5");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "resp_gpt_context",
+          object: "response",
+          status: "completed",
+          model: "gpt-5.5",
+          output: [
+            {
+              id: "msg_gpt_context",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "GPT critical project detail: preserve unified history.",
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+          output_text: "GPT critical project detail: preserve unified history.",
+        }),
+      );
+      return;
+    }
+
+    if (req.url === "/v1/chat/completions") {
+      const body = JSON.parse(bodyText);
+      chatBodies.push(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "chatcmpl_after_switch",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "chat model saw the prior detail",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected path" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    clientAuth: {
+      allowOpenAiBearer: true,
+    },
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer codex-openai-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        input: "remember the project detail",
+      }),
+    });
+
+    await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        previous_response_id: "resp_gpt_context",
+        input: "what did GPT say?",
+      }),
+    });
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+
+  assert.equal(chatBodies.length, 1);
+  const chatText = JSON.stringify(chatBodies[0].messages);
+  assert.match(chatText, /remember the project detail/);
+  assert.match(chatText, /GPT critical project detail/);
+  assert.match(chatText, /what did GPT say/);
 });
 
 function listen(server) {

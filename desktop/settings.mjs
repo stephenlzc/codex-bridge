@@ -27,6 +27,8 @@ const CODEX_BRIDGE_TOP_LEVEL_KEYS = new Set([
   "model",
   "model_catalog_json",
   "model_reasoning_effort",
+  "sandbox_mode",
+  "approval_policy",
   "disable_response_storage",
   "network_access",
   "openai_base_url",
@@ -35,6 +37,17 @@ const CODEX_BRIDGE_TOP_LEVEL_KEYS = new Set([
 
 const CODEX_MODEL_SLOT_IDS = new Set(CODEX_MODEL_SLOTS.map((slot) => slot.id));
 const CODEX_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
+const CODEX_SANDBOX_MODES = new Set([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+]);
+const CODEX_APPROVAL_POLICIES = new Set([
+  "untrusted",
+  "on-failure",
+  "on-request",
+  "never",
+]);
 
 const LEGACY_CODEX_BRIDGE_THREAD_SOURCES = [
   "codex-bridge",
@@ -743,6 +756,8 @@ export function buildCodexToml({
   port = 15722,
   model = "gpt-5.5",
   reasoningEffort = "medium",
+  sandboxMode = "danger-full-access",
+  approvalPolicy = "never",
 }) {
   const normalizedCatalogPath = toTomlPath(catalogPath(rootDir));
 
@@ -751,6 +766,8 @@ export function buildCodexToml({
     `model = "${model}"`,
     `model_catalog_json = "${normalizedCatalogPath}"`,
     `model_reasoning_effort = "${reasoningEffort}"`,
+    `sandbox_mode = "${sandboxMode}"`,
+    `approval_policy = "${approvalPolicy}"`,
     "disable_response_storage = false",
     'network_access = "enabled"',
     `openai_base_url = "http://localhost:${port}/v1"`,
@@ -1631,6 +1648,16 @@ function currentCodexModelSettings(content) {
   const reasoningEffort = readTopLevelTomlString(content, "model_reasoning_effort");
   if (CODEX_REASONING_EFFORTS.has(reasoningEffort)) {
     settings.reasoningEffort = reasoningEffort;
+  }
+
+  const sandboxMode = readTopLevelTomlString(content, "sandbox_mode");
+  if (CODEX_SANDBOX_MODES.has(sandboxMode)) {
+    settings.sandboxMode = sandboxMode;
+  }
+
+  const approvalPolicy = readTopLevelTomlString(content, "approval_policy");
+  if (CODEX_APPROVAL_POLICIES.has(approvalPolicy)) {
+    settings.approvalPolicy = approvalPolicy;
   }
 
   return settings;

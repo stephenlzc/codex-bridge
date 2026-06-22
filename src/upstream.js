@@ -1,12 +1,17 @@
 import { cloneJson, jsonResponse, openAiError, tryParseJson } from "./json.js";
 import { authModeForRoute, joinUpstreamUrl, requireApiKey } from "./config.js";
-import { responsesToChatRequest } from "./responses-to-chat.js";
 import {
+  responseRequestToChatSourceMessages,
+  responsesToChatRequest,
+} from "./responses-to-chat.js";
+import {
+  assistantHistoryMessageFromResponse,
   assistantHistoryMessageFromChat,
   chatResponseToResponse,
   responseToSse,
 } from "./chat-to-responses.js";
 import { fetchInitWithProxy, proxyLogLabel } from "./proxy.js";
+import { markRouteRateLimited, waitForRouteCapacity } from "./rate-limit.js";
 
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 
@@ -71,7 +76,7 @@ export async function handleResponsesRequest(
   context = {},
 ) {
   if (route.api === "responses") {
-    return proxyResponsesApi(requestBody, route, res, context);
+    return proxyResponsesApi(requestBody, route, history, res, context);
   }
   if (route.api === "chat_completions") {
     return proxyChatCompletions(requestBody, route, history, res, context);
@@ -79,9 +84,25 @@ export async function handleResponsesRequest(
   jsonResponse(res, 500, openAiError(`Unsupported route api: ${route.api}`));
 }
 
-export async function proxyResponsesApi(requestBody, route, res, context = {}) {
+export async function proxyResponsesApi(
+  requestBody,
+  route,
+  history,
+  res,
+  context = {},
+) {
+  if (!history || typeof history.get !== "function") {
+    context = res || {};
+    res = history;
+    history = null;
+  }
   const payload = cloneJson(requestBody);
   payload.model = route.model;
+  const { messages: sourceMessages } = responseRequestToChatSourceMessages(
+    requestBody,
+    route,
+    history,
+  );
 
   const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
   logRoute(context, route, upstreamUrl);
@@ -117,7 +138,13 @@ export async function proxyResponsesApi(requestBody, route, res, context = {}) {
   }
   responseTail += decoder.decode();
   res.end();
-  logUsage(context, route, extractResponsesUsage(responseTail));
+  const completedResponse = extractResponsesObject(responseTail);
+  recordResponsesHistory(history, completedResponse, sourceMessages);
+  logUsage(
+    context,
+    route,
+    extractUsageObject(completedResponse) || extractResponsesUsage(responseTail),
+  );
 }
 
 export async function proxyChatCompletions(
@@ -143,6 +170,7 @@ export async function proxyChatCompletions(
     ...converted.messagesForHistory,
     assistantHistoryMessageFromChat(upstream),
   ]);
+  history.recordResponse(response);
 
   if (converted.wantsStream) {
     const payload = responseToSse(response);
@@ -383,11 +411,12 @@ function logUsage(context, route, usage) {
 }
 
 async function fetchUpstream(upstreamUrl, init, context = {}, route = {}) {
+  await waitForRouteCapacity(route, context);
   const proxiedInit = fetchInitWithProxy(upstreamUrl, init);
   const usedProxy = Boolean(proxiedInit.dispatcher);
   const proxyLabel = proxyLogLabel(upstreamUrl);
   try {
-    return await fetch(upstreamUrl, proxiedInit);
+    return await fetchAndTrackRateLimit(upstreamUrl, proxiedInit, route);
   } catch (error) {
     if (!usedProxy || !isNetworkFetchFailure(error)) {
       throw isNetworkFetchFailure(error)
@@ -396,13 +425,21 @@ async function fetchUpstream(upstreamUrl, init, context = {}, route = {}) {
     }
     logProxyFallback(context, route, error);
     try {
-      return await fetch(upstreamUrl, init);
+      return await fetchAndTrackRateLimit(upstreamUrl, init, route);
     } catch (directError) {
       throw isNetworkFetchFailure(directError)
         ? new UpstreamNetworkError(directError, upstreamUrl, route, proxyLabel)
         : directError;
     }
   }
+}
+
+async function fetchAndTrackRateLimit(upstreamUrl, init, route) {
+  const response = await fetch(upstreamUrl, init);
+  if (response.status === 429) {
+    markRouteRateLimited(route, response.headers);
+  }
+  return response;
 }
 
 function logProxyFallback(context, route, error) {
@@ -475,6 +512,55 @@ function extractResponsesUsage(text) {
     }
   }
   return latest;
+}
+
+function extractResponsesObject(text) {
+  const direct = tryParseJson(text);
+  if (isResponsesObject(direct)) {
+    return direct;
+  }
+
+  let latest = null;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) {
+      continue;
+    }
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+    const parsed = tryParseJson(data);
+    if (isResponsesObject(parsed)) {
+      latest = parsed;
+      continue;
+    }
+    if (isResponsesObject(parsed?.response)) {
+      latest = parsed.response;
+    }
+  }
+  return latest;
+}
+
+function isResponsesObject(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      value.object === "response" &&
+      typeof value.id === "string" &&
+      value.id,
+  );
+}
+
+function recordResponsesHistory(history, response, sourceMessages) {
+  if (!history || !isResponsesObject(response)) {
+    return;
+  }
+  history.record(response.id, [
+    ...sourceMessages,
+    assistantHistoryMessageFromResponse(response),
+  ]);
+  history.recordResponse(response);
 }
 
 function extractUsageObject(value) {

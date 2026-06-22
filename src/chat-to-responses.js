@@ -55,6 +55,13 @@ export function assistantHistoryMessageFromChat(chat) {
   return history;
 }
 
+export function assistantHistoryMessageFromResponse(response) {
+  return {
+    role: "assistant",
+    content: responseHistoryText(response) || null,
+  };
+}
+
 export function responseToSse(response) {
   const events = [];
   const inProgress = {
@@ -173,6 +180,25 @@ function responseUsage(usage = {}) {
       reasoning_tokens: usage.completion_tokens_details?.reasoning_tokens || 0,
     },
   };
+}
+
+function responseHistoryText(response) {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text;
+  }
+  const parts = [];
+  for (const item of response?.output || []) {
+    if (item?.type !== "message" || item.role !== "assistant") {
+      continue;
+    }
+    for (const part of item.content || []) {
+      const text = part?.text || part?.output_text;
+      if (typeof text === "string" && text) {
+        parts.push(text);
+      }
+    }
+  }
+  return parts.join("\n");
 }
 
 function messageText(message) {

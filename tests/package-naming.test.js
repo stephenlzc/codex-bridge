@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
+test("desktop quit path does not send renderer updates after the window is destroyed", () => {
+  const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
+
+  assert.match(main, /function sendToRenderer/);
+  assert.match(main, /webContents\.isDestroyed\(\)/);
+  assert.match(main, /stopRouter\(\{\s*silent:\s*true\s*\}\)/);
+  assert.match(main, /if \(isQuitting\)/);
+  assert.doesNotMatch(main, /mainWindow\?\.webContents\.send/);
+});
+
 test("Windows release archive uses formal portable package naming", () => {
   const workflow = fs.readFileSync(
     path.join(process.cwd(), ".github", "workflows", "desktop-portable.yml"),

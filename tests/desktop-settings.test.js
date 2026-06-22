@@ -700,6 +700,45 @@ test("applyCodexConfig preserves existing Codex user settings while adding Codex
   assert.match(written, /\[projects\.'f:\\game_code\\demo']\s+trust_level = "trusted"/);
 });
 
+test("applyCodexConfig writes stable sandbox defaults when Codex has none", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(target, 'model = "old"\n', "utf8");
+
+  applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  const written = fs.readFileSync(target, "utf8");
+
+  assert.match(written, /sandbox_mode = "danger-full-access"/);
+  assert.match(written, /approval_policy = "never"/);
+});
+
+test("applyCodexConfig preserves current sandbox and approval settings", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(
+    target,
+    [
+      'sandbox_mode = "workspace-write"',
+      'approval_policy = "on-request"',
+      'model = "gpt-5.2"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  const written = fs.readFileSync(target, "utf8");
+
+  assert.match(written, /sandbox_mode = "workspace-write"/);
+  assert.match(written, /approval_policy = "on-request"/);
+});
+
 test("applyCodexConfig preserves the current Codex model selection", () => {
   const rootDir = makeTempProject();
   const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));

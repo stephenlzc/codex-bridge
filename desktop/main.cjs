@@ -154,7 +154,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
   isQuitting = true;
-  stopRouter();
+  stopRouter({ silent: true });
 });
 
 app.on("window-all-closed", () => {
@@ -183,7 +183,7 @@ function createTray() {
       label: "退出 CodexBridge",
       click: () => {
         isQuitting = true;
-        stopRouter();
+        stopRouter({ silent: true });
         app.quit();
       },
     },
@@ -440,6 +440,10 @@ ipcMain.handle("router:start", async () => {
   routerProcess.stdout.on("data", (chunk) => appendLog(chunk.toString("utf8").trimEnd()));
   routerProcess.stderr.on("data", (chunk) => appendLog(chunk.toString("utf8").trimEnd()));
   routerProcess.on("exit", (code) => {
+    if (isQuitting) {
+      routerProcess = null;
+      return;
+    }
     appendLog(`Router stopped with code ${code ?? "unknown"}.`);
     routerProcess = null;
     lastHealth = {
@@ -517,9 +521,12 @@ ipcMain.handle("dialog:error", async (_event, message) => {
   dialog.showErrorBox("CodexBridge", String(message || "Unknown error"));
 });
 
-function stopRouter() {
+function stopRouter(options = {}) {
   if (!routerProcess) {
     return;
+  }
+  if (options.silent) {
+    routerProcess.removeAllListeners("exit");
   }
   routerProcess.kill();
   routerProcess = null;
@@ -580,8 +587,19 @@ function appendLog(line) {
   }
   persistUsageEvents();
   logLines = logLines.slice(-300);
-  mainWindow?.webContents.send("logs:update", logLines);
-  mainWindow?.webContents.send("usage:update", usagePayload());
+  sendToRenderer("logs:update", logLines);
+  sendToRenderer("usage:update", usagePayload());
+}
+
+function sendToRenderer(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  const { webContents } = mainWindow;
+  if (!webContents || webContents.isDestroyed()) {
+    return;
+  }
+  webContents.send(channel, payload);
 }
 
 function appendHistorySyncLog(historySync) {
@@ -702,7 +720,7 @@ function formatError(prefix, error) {
 
 async function broadcastState() {
   const settings = await loadSettings();
-  mainWindow?.webContents.send("state:update", await getStatePayload(settings));
+  sendToRenderer("state:update", await getStatePayload(settings));
 }
 
 async function getStatePayload(settings) {

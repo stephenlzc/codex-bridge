@@ -63,9 +63,30 @@ export function createRouterServer(config = loadConfig()) {
         return;
       }
 
+      const responseItemId = responseIdFromItemPath(url.pathname);
+      if (req.method === "GET" && responseItemId) {
+        jsonResponse(
+          res,
+          200,
+          history.getResponse(responseItemId) ||
+            placeholderResponse(responseItemId, activeConfig.defaultModel),
+        );
+        return;
+      }
+
+      const responseCancelId = responseIdFromCancelPath(url.pathname);
+      if (req.method === "POST" && responseCancelId) {
+        jsonResponse(
+          res,
+          200,
+          placeholderResponse(responseCancelId, activeConfig.defaultModel, "cancelled"),
+        );
+        return;
+      }
+
       if (
         ["PATCH", "PUT"].includes(req.method || "") &&
-        isResponsesCollection(url.pathname)
+        isModelSettingsPath(url.pathname)
       ) {
         const body = await readJsonRequest(req);
         jsonResponse(res, 200, {
@@ -194,6 +215,39 @@ function writeCors(res) {
 
 function isResponsesCollection(pathname) {
   return ["/v1/responses", "/responses"].includes(pathname);
+}
+
+function isModelSettingsPath(pathname) {
+  if (isResponsesCollection(pathname)) {
+    return true;
+  }
+  return /^\/(?:v1\/)?responses\/[^/]+(?:\/model_settings)?$/.test(pathname);
+}
+
+function responseIdFromItemPath(pathname) {
+  const match = pathname.match(/^\/(?:v1\/)?responses\/([^/]+)$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : "";
+}
+
+function responseIdFromCancelPath(pathname) {
+  const match = pathname.match(/^\/(?:v1\/)?responses\/([^/]+)\/cancel$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : "";
+}
+
+function placeholderResponse(id, model, status = "completed") {
+  return {
+    id,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status,
+    model: model || null,
+    output: [],
+    output_text: "",
+    parallel_tool_calls: true,
+    error: null,
+    incomplete_details: null,
+    usage: null,
+  };
 }
 
 function makeRequestId() {

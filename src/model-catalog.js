@@ -19,8 +19,15 @@ export function buildModelCatalog(config) {
 }
 
 export function modelCatalogEntry(model, defaults = {}, index = 0) {
-  const contextWindow = Number(
+  const upstreamContextWindow = Number(
     model.contextWindow || defaults.contextWindow || 258400,
+  );
+  const contextWindow = Number(
+    model.catalogContextWindow ||
+      defaults.catalogContextWindow ||
+      (model.api === "chat_completions"
+        ? Math.max(upstreamContextWindow, 1_000_000)
+        : upstreamContextWindow),
   );
   const effectiveContextWindowPercent = Number(
     model.effectiveContextWindowPercent ||
@@ -30,6 +37,10 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
   const autoCompactPercent = Number(defaults.autoCompactPercent || 80);
   const autoCompactTokenLimit = Math.floor(
     contextWindow * (autoCompactPercent / 100),
+  );
+  const truncationTokenLimit = Math.min(
+    contextWindow,
+    Math.floor(contextWindow * (effectiveContextWindowPercent / 100)),
   );
   const inputModalities = inputModalitiesForModel(model);
 
@@ -54,7 +65,7 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
     web_search_tool_type: "text",
     truncation_policy: model.truncationPolicy || {
       mode: "tokens",
-      limit: Math.min(contextWindow, 10000),
+      limit: truncationTokenLimit,
     },
     supports_parallel_tool_calls: true,
     supports_image_detail_original: inputModalities.includes("image"),
