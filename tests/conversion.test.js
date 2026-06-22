@@ -285,6 +285,34 @@ test("chat conversion trims old history to fit the upstream model context window
   assert.match(allText, /current question/);
 });
 
+test("chat conversion trims CJK-heavy history by token budget instead of loose character budget", () => {
+  const history = new ResponseHistory();
+  history.record("resp_cjk_long", [
+    { role: "user", content: "旧项目上下文".repeat(700) },
+    { role: "assistant", content: "旧回答".repeat(700) },
+    { role: "user", content: "最近上下文" },
+  ]);
+
+  const converted = responsesToChatRequest(
+    {
+      previous_response_id: "resp_cjk_long",
+      input: "当前问题",
+    },
+    {
+      ...route,
+      contextWindow: 2048,
+    },
+    history,
+  );
+
+  const allText = converted.body.messages
+    .map((message) => JSON.stringify(message.content))
+    .join("\n");
+  assert.doesNotMatch(allText, /旧项目上下文旧项目上下文旧项目上下文/);
+  assert.match(allText, /最近上下文/);
+  assert.match(allText, /当前问题/);
+});
+
 test("chat conversion keeps current input when system instructions exceed context budget", () => {
   const converted = responsesToChatRequest(
     {

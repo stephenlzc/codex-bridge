@@ -5,6 +5,7 @@ export class ResponseHistory {
     this.maxEntries = maxEntries;
     this.entries = new Map();
     this.responses = new Map();
+    this.responseMeta = new Map();
   }
 
   get(responseId) {
@@ -24,6 +25,7 @@ export class ResponseHistory {
       const oldest = this.entries.keys().next().value;
       this.entries.delete(oldest);
       this.responses.delete(oldest);
+      this.responseMeta.delete(oldest);
     }
   }
 
@@ -34,15 +36,24 @@ export class ResponseHistory {
     return cloneJson(this.responses.get(responseId));
   }
 
-  recordResponse(response) {
+  getResponseMeta(responseId) {
+    if (!responseId || !this.responseMeta.has(responseId)) {
+      return null;
+    }
+    return cloneJson(this.responseMeta.get(responseId));
+  }
+
+  recordResponse(response, meta = {}) {
     if (!response?.id) {
       return;
     }
     this.responses.set(response.id, cloneJson(response));
+    this.responseMeta.set(response.id, cloneJson(meta || {}));
     while (this.responses.size > this.maxEntries) {
       const oldest = this.responses.keys().next().value;
       this.responses.delete(oldest);
       this.entries.delete(oldest);
+      this.responseMeta.delete(oldest);
     }
   }
 }

@@ -1,6 +1,7 @@
-import { cloneJson, jsonResponse, openAiError, tryParseJson } from "./json.js";
+import { cloneJson, jsonResponse, openAiError, stringifyJson, tryParseJson } from "./json.js";
 import { authModeForRoute, joinUpstreamUrl, requireApiKey } from "./config.js";
 import {
+  contentToText,
   responseRequestToChatSourceMessages,
   responsesToChatRequest,
 } from "./responses-to-chat.js";
@@ -103,6 +104,9 @@ export async function proxyResponsesApi(
     route,
     history,
   );
+  if (shouldInlineLocalHistoryForResponses(requestBody, history)) {
+    inlineLocalHistoryForResponsesPayload(payload, sourceMessages);
+  }
 
   const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
   logRoute(context, route, upstreamUrl);
@@ -147,6 +151,147 @@ export async function proxyResponsesApi(
   );
 }
 
+function shouldInlineLocalHistoryForResponses(requestBody, history) {
+  if (!requestBody?.previous_response_id || !history?.getResponseMeta) {
+    return false;
+  }
+  const meta = history.getResponseMeta(requestBody.previous_response_id);
+  return Boolean(meta && meta.upstreamKnown === false);
+}
+
+function inlineLocalHistoryForResponsesPayload(payload, sourceMessages) {
+  const systemInstructions = sourceMessages
+    .filter((message) => message?.role === "system")
+    .map((message) => contentToText(message.content))
+    .filter(Boolean)
+    .join("\n\n");
+  const existingInstructions =
+    typeof payload.instructions === "string" ? payload.instructions : "";
+  if (systemInstructions && !existingInstructions) {
+    payload.instructions = systemInstructions;
+  } else if (
+    systemInstructions &&
+    !existingInstructions.includes(systemInstructions)
+  ) {
+    payload.instructions = `${systemInstructions}\n\n${payload.instructions}`;
+  }
+  payload.input = chatMessagesToResponsesInput(
+    sourceMessages.filter((message) => message?.role !== "system"),
+  );
+  delete payload.messages;
+  delete payload.previous_response_id;
+}
+
+function chatMessagesToResponsesInput(messages) {
+  return messages.map(chatMessageToResponsesInput).filter(Boolean);
+}
+
+function chatMessageToResponsesInput(message) {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const role = responsesInputRole(message.role);
+  const content = chatContentToResponsesContent(
+    message.content,
+    role,
+    toolCallsToHandoffText(message.tool_calls),
+  );
+  if (!content) {
+    return null;
+  }
+  return { role, content };
+}
+
+function responsesInputRole(role) {
+  if (role === "assistant") {
+    return "assistant";
+  }
+  return "user";
+}
+
+function chatContentToResponsesContent(content, role, fallbackText = "") {
+  if (Array.isArray(content)) {
+    const parts = [];
+    const textParts = [];
+    for (const part of content) {
+      const converted = chatPartToResponsesPart(part, role);
+      if (!converted) {
+        continue;
+      }
+      if (typeof converted === "string") {
+        textParts.push(converted);
+      } else {
+        parts.push(converted);
+      }
+    }
+    if (fallbackText) {
+      textParts.push(fallbackText);
+    }
+    const text = textParts.filter(Boolean).join("\n");
+    if (parts.length === 0) {
+      return text;
+    }
+    if (text) {
+      parts.unshift(textPartForRole(role, text));
+    }
+    return parts;
+  }
+
+  const text = [contentToText(content), fallbackText].filter(Boolean).join("\n");
+  return text;
+}
+
+function chatPartToResponsesPart(part, role) {
+  if (typeof part === "string") {
+    return part;
+  }
+  if (!part || typeof part !== "object") {
+    return null;
+  }
+  if (part.type === "text") {
+    return part.text || "";
+  }
+  if (part.type === "image_url") {
+    const rawImageUrl = part.image_url;
+    const imageUrl =
+      typeof rawImageUrl === "string"
+        ? rawImageUrl
+        : rawImageUrl?.url || part.url || "";
+    if (!imageUrl) {
+      return "[image input missing url]";
+    }
+    const responsePart = {
+      type: "input_image",
+      image_url: imageUrl,
+    };
+    const detail = part.detail || rawImageUrl?.detail;
+    if (detail) {
+      responsePart.detail = detail;
+    }
+    return responsePart;
+  }
+  return stringifyJson(part);
+}
+
+function textPartForRole(role, text) {
+  return {
+    type: role === "assistant" ? "output_text" : "input_text",
+    text,
+  };
+}
+
+function toolCallsToHandoffText(toolCalls) {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+    return "";
+  }
+  const names = toolCalls
+    .map((toolCall) => toolCall?.function?.name || toolCall?.name || toolCall?.id)
+    .filter(Boolean);
+  return `[assistant tool calls omitted during provider handoff${
+    names.length ? `: ${names.join(", ")}` : ""
+  }]`;
+}
+
 export async function proxyChatCompletions(
   requestBody,
   route,
@@ -170,7 +315,12 @@ export async function proxyChatCompletions(
     ...converted.messagesForHistory,
     assistantHistoryMessageFromChat(upstream),
   ]);
-  history.recordResponse(response);
+  history.recordResponse(response, {
+    api: "chat_completions",
+    routeId: route.id || "",
+    upstreamModel: route.model || "",
+    upstreamKnown: false,
+  });
 
   if (converted.wantsStream) {
     const payload = responseToSse(response);
@@ -516,8 +666,9 @@ function extractResponsesUsage(text) {
 
 function extractResponsesObject(text) {
   const direct = tryParseJson(text);
-  if (isResponsesObject(direct)) {
-    return direct;
+  const directResponse = normalizeResponsesObject(direct);
+  if (directResponse) {
+    return directResponse;
   }
 
   let latest = null;
@@ -531,25 +682,39 @@ function extractResponsesObject(text) {
       continue;
     }
     const parsed = tryParseJson(data);
-    if (isResponsesObject(parsed)) {
-      latest = parsed;
+    const parsedResponse = normalizeResponsesObject(parsed);
+    if (parsedResponse) {
+      latest = parsedResponse;
       continue;
     }
-    if (isResponsesObject(parsed?.response)) {
-      latest = parsed.response;
+    const nestedResponse = normalizeResponsesObject(parsed?.response);
+    if (nestedResponse) {
+      latest = nestedResponse;
     }
   }
   return latest;
 }
 
 function isResponsesObject(value) {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      value.object === "response" &&
-      typeof value.id === "string" &&
-      value.id,
-  );
+  return Boolean(normalizeResponsesObject(value));
+}
+
+function normalizeResponsesObject(value) {
+  if (!value || typeof value !== "object" || typeof value.id !== "string" || !value.id) {
+    return null;
+  }
+  if (value.object === "response") {
+    return value;
+  }
+  if (
+    value.status ||
+    value.output ||
+    typeof value.output_text === "string" ||
+    value.usage
+  ) {
+    return { object: "response", ...value };
+  }
+  return null;
 }
 
 function recordResponsesHistory(history, response, sourceMessages) {
@@ -560,7 +725,10 @@ function recordResponsesHistory(history, response, sourceMessages) {
     ...sourceMessages,
     assistantHistoryMessageFromResponse(response),
   ]);
-  history.recordResponse(response);
+  history.recordResponse(response, {
+    api: "responses",
+    upstreamKnown: true,
+  });
 }
 
 function extractUsageObject(value) {

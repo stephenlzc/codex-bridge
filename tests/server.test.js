@@ -1624,6 +1624,264 @@ test("responses route history is available after switching to a chat-completions
   assert.match(chatText, /what did GPT say/);
 });
 
+test("responses route inlines local chat history when switching back from a chat-completions model", async () => {
+  const responseBodies = [];
+  const upstream = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+
+    if (req.url === "/v1/chat/completions") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "chatcmpl_local_context",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "DeepSeek local detail: keep this when returning to GPT.",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
+    if (req.url === "/v1/responses") {
+      const body = JSON.parse(bodyText);
+      if (body.previous_response_id) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: { message: "unknown previous response id" },
+          }),
+        );
+        return;
+      }
+      responseBodies.push(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "resp_gpt_after_local",
+          object: "response",
+          status: "completed",
+          model: "gpt-5.5",
+          output: [],
+          output_text: "GPT saw local chat history",
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected path" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    clientAuth: {
+      allowOpenAiBearer: true,
+    },
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const first = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: "remember local detail",
+      }),
+    });
+
+    await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer codex-openai-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        previous_response_id: first.id,
+        input: "what did the local model say?",
+      }),
+    });
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+
+  assert.equal(responseBodies.length, 1);
+  assert.equal(responseBodies[0].previous_response_id, undefined);
+  const inputText = JSON.stringify(responseBodies[0].input);
+  assert.match(inputText, /remember local detail/);
+  assert.match(inputText, /DeepSeek local detail/);
+  assert.match(inputText, /what did the local model say/);
+});
+
+test("streaming responses without object field are recorded for later chat-completions switches", async () => {
+  const chatBodies = [];
+  const upstream = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+
+    if (req.url === "/v1/responses") {
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+      res.end(
+        [
+          "event: response.completed",
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: {
+              id: "resp_stream_context",
+              status: "completed",
+              model: "gpt-5.5",
+              output_text: "GPT streamed detail without object.",
+            },
+          })}`,
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+      );
+      return;
+    }
+
+    if (req.url === "/v1/chat/completions") {
+      const body = JSON.parse(bodyText);
+      chatBodies.push(body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "chatcmpl_after_stream",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "chat model saw streamed GPT history",
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unexpected path" }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    clientAuth: {
+      allowOpenAiBearer: true,
+    },
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const firstResponse = await fetch(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer codex-openai-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        stream: true,
+        input: "remember streamed detail",
+      }),
+    });
+    const firstText = await firstResponse.text();
+    assert.equal(firstResponse.ok, true, firstText);
+
+    await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        previous_response_id: "resp_stream_context",
+        input: "what did streaming GPT say?",
+      }),
+    });
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+
+  assert.equal(chatBodies.length, 1);
+  const chatText = JSON.stringify(chatBodies[0].messages);
+  assert.match(chatText, /remember streamed detail/);
+  assert.match(chatText, /GPT streamed detail/);
+  assert.match(chatText, /what did streaming GPT say/);
+});
+
 function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 }

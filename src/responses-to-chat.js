@@ -8,9 +8,8 @@ import {
 } from "./tools.js";
 
 const MAX_CHAT_DATA_IMAGE_URL_CHARS = 2_000_000;
-const CHAT_CONTEXT_CHARS_PER_TOKEN = 3;
-const CHAT_CONTEXT_INPUT_PERCENT = 75;
-const MIN_CHAT_CONTEXT_CHARS = 8_000;
+const CHAT_CONTEXT_INPUT_PERCENT = 65;
+const MIN_CHAT_CONTEXT_INPUT_TOKENS = 128;
 const OVERSIZED_IMAGE_PLACEHOLDER =
   "[image input omitted because it is too large for this chat provider]";
 
@@ -424,8 +423,8 @@ function shouldRequestSeparatedReasoning(route = {}) {
 }
 
 function trimMessagesToRouteContext(messages, route = {}) {
-  const maxChars = maxChatContextChars(route);
-  if (!maxChars || estimatedMessagesChars(messages) <= maxChars) {
+  const maxTokens = maxChatContextInputTokens(route);
+  if (!maxTokens || estimatedMessagesTokens(messages) <= maxTokens) {
     return messages;
   }
 
@@ -444,40 +443,40 @@ function trimMessagesToRouteContext(messages, route = {}) {
     content:
       "Earlier conversation history was omitted by CodexBridge to fit the upstream model context window.",
   };
-  const latestFallbackChars = Math.min(
-    maxChars,
-    Math.max(1_000, Math.floor(maxChars * 0.25)),
+  const latestFallbackTokens = Math.min(
+    maxTokens,
+    Math.max(128, Math.floor(maxTokens * 0.25)),
   );
-  const noticeChars = estimatedMessageChars(trimNotice);
-  const systemBudget = Math.max(0, maxChars - noticeChars - latestFallbackChars);
-  const originalSystemChars = estimatedMessagesChars(systemMessages);
-  systemMessages = trimSystemMessagesToChars(systemMessages, systemBudget);
-  const systemTrimmed = estimatedMessagesChars(systemMessages) < originalSystemChars;
+  const noticeTokens = estimatedMessageTokens(trimNotice);
+  const systemBudget = Math.max(0, maxTokens - noticeTokens - latestFallbackTokens);
+  const originalSystemTokens = estimatedMessagesTokens(systemMessages);
+  systemMessages = trimSystemMessagesToTokens(systemMessages, systemBudget);
+  const systemTrimmed = estimatedMessagesTokens(systemMessages) < originalSystemTokens;
 
   const preserved = [];
-  let usedChars = estimatedMessagesChars(systemMessages) + noticeChars;
+  let usedTokens = estimatedMessagesTokens(systemMessages) + noticeTokens;
 
   for (let index = conversationMessages.length - 1; index >= 0; index -= 1) {
     const message = conversationMessages[index];
-    const messageChars = estimatedMessageChars(message);
-    const remaining = maxChars - usedChars;
+    const messageTokens = estimatedMessageTokens(message);
+    const remaining = maxTokens - usedTokens;
 
     if (remaining <= 0) {
       if (preserved.length === 0 && index === conversationMessages.length - 1) {
-        const keptMessage = trimMessageContentToChars(message, latestFallbackChars);
+        const keptMessage = trimMessageContentToTokens(message, latestFallbackTokens);
         preserved.push(keptMessage);
-        usedChars += estimatedMessageChars(keptMessage);
+        usedTokens += estimatedMessageTokens(keptMessage);
       }
       continue;
     }
 
-    if (messageChars <= remaining || preserved.length === 0) {
+    if (messageTokens <= remaining || preserved.length === 0) {
       const keptMessage =
-        messageChars <= remaining
+        messageTokens <= remaining
           ? message
-          : trimMessageContentToChars(message, remaining);
+          : trimMessageContentToTokens(message, remaining);
       preserved.push(keptMessage);
-      usedChars += estimatedMessageChars(keptMessage);
+      usedTokens += estimatedMessageTokens(keptMessage);
     }
   }
 
@@ -490,72 +489,155 @@ function trimMessagesToRouteContext(messages, route = {}) {
   return normalizeToolCallPairs(result);
 }
 
-function maxChatContextChars(route = {}) {
+function maxChatContextInputTokens(route = {}) {
   const contextWindow = Number(route.contextWindow || 0);
   if (!Number.isFinite(contextWindow) || contextWindow <= 0) {
     return 0;
   }
   const inputTokens = Math.floor(contextWindow * (CHAT_CONTEXT_INPUT_PERCENT / 100));
-  return Math.max(MIN_CHAT_CONTEXT_CHARS, inputTokens * CHAT_CONTEXT_CHARS_PER_TOKEN);
+  return Math.max(MIN_CHAT_CONTEXT_INPUT_TOKENS, inputTokens);
 }
 
-function estimatedMessagesChars(messages) {
+function estimatedMessagesTokens(messages) {
   return messages.reduce(
-    (total, message) => total + estimatedMessageChars(message),
+    (total, message) => total + estimatedMessageTokens(message),
     0,
   );
 }
 
-function estimatedMessageChars(message) {
-  return JSON.stringify(message || "").length;
+function estimatedMessageTokens(message) {
+  if (!message || typeof message !== "object") {
+    return estimatedValueTokens(message);
+  }
+  let tokens = 8 + estimatedTextTokens(message.role || "");
+  tokens += estimatedValueTokens(message.content);
+  if (Array.isArray(message.tool_calls)) {
+    tokens += estimatedValueTokens(message.tool_calls);
+  }
+  if (message.tool_call_id) {
+    tokens += estimatedTextTokens(message.tool_call_id) + 4;
+  }
+  return tokens;
 }
 
-function trimSystemMessagesToChars(messages, maxChars) {
-  if (estimatedMessagesChars(messages) <= maxChars) {
+function estimatedValueTokens(value) {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+  if (typeof value === "string") {
+    return estimatedTextTokens(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return 1;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + estimatedValueTokens(item) + 2, 4);
+  }
+  if (typeof value === "object") {
+    return Object.entries(value).reduce(
+      (total, [key, entryValue]) =>
+        total + estimatedTextTokens(key) + estimatedValueTokens(entryValue) + 3,
+      6,
+    );
+  }
+  return estimatedTextTokens(String(value));
+}
+
+function estimatedTextTokens(value) {
+  const text = String(value || "");
+  if (!text) {
+    return 0;
+  }
+  let ascii = 0;
+  let cjk = 0;
+  let other = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (isCjkCodePoint(code)) {
+      cjk += 1;
+    } else if (code <= 0x7f) {
+      ascii += 1;
+    } else {
+      other += 1;
+    }
+  }
+  return Math.ceil(ascii / 4) + cjk + Math.ceil(other / 2);
+}
+
+function isCjkCodePoint(code) {
+  return (
+    (code >= 0x3400 && code <= 0x4dbf) ||
+    (code >= 0x4e00 && code <= 0x9fff) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0x3040 && code <= 0x30ff) ||
+    (code >= 0xac00 && code <= 0xd7af) ||
+    (code >= 0xff00 && code <= 0xffef)
+  );
+}
+
+function trimSystemMessagesToTokens(messages, maxTokens) {
+  if (estimatedMessagesTokens(messages) <= maxTokens) {
     return messages;
   }
 
   const preserved = [];
-  let usedChars = 0;
+  let usedTokens = 0;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    const messageChars = estimatedMessageChars(message);
-    const remaining = maxChars - usedChars;
+    const messageTokens = estimatedMessageTokens(message);
+    const remaining = maxTokens - usedTokens;
     if (remaining <= 0) {
       break;
     }
-    if (messageChars <= remaining || preserved.length === 0) {
+    if (messageTokens <= remaining || preserved.length === 0) {
       const keptMessage =
-        messageChars <= remaining
+        messageTokens <= remaining
           ? message
-          : trimMessageContentToChars(message, remaining);
+          : trimMessageContentToTokens(message, remaining);
       preserved.push(keptMessage);
-      usedChars += estimatedMessageChars(keptMessage);
+      usedTokens += estimatedMessageTokens(keptMessage);
     }
   }
   return preserved.reverse();
 }
 
-function trimMessageContentToChars(message, maxChars) {
+function trimMessageContentToTokens(message, maxTokens) {
   const trimmed = { ...message };
   delete trimmed.tool_calls;
-  trimmed.content = trimTextForContext(contentToText(message?.content), maxChars);
+  trimmed.content = trimTextForContextTokens(
+    contentToText(message?.content),
+    Math.max(0, maxTokens - 12),
+  );
   if (message?.role === "assistant" && !trimmed.content) {
     trimmed.content = "[assistant message omitted to fit context]";
   }
   return trimmed;
 }
 
-function trimTextForContext(text, maxChars) {
+function trimTextForContextTokens(text, maxTokens) {
   const value = String(text || "");
-  const budget = Math.max(0, maxChars - 80);
-  if (value.length <= budget) {
+  if (estimatedTextTokens(value) <= maxTokens) {
     return value;
   }
-  if (budget <= 0) {
+  const marker = "[message truncated to fit context]\n";
+  if (maxTokens <= estimatedTextTokens(marker) + 1) {
     return "[message omitted to fit context]";
   }
-  return `[message truncated to fit context]\n${value.slice(-budget)}`;
+
+  let low = 0;
+  let high = value.length;
+  let best = "";
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = `${marker}${value.slice(-mid)}`;
+    if (estimatedTextTokens(candidate) <= maxTokens) {
+      best = candidate;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best || "[message omitted to fit context]";
 }
 
 function normalizeToolCallPairs(messages) {
