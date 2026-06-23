@@ -274,7 +274,10 @@ test("server suppresses unexpected Node REPL tool calls from chat providers", as
   }
 
   assert.equal(chatBodies.length, 1);
-  assert.equal(chatBodies[0].tool_choice, "auto");
+  assert.deepEqual(chatBodies[0].tool_choice, {
+    type: "function",
+    function: { name: "shell_command" },
+  });
   assert.equal(
     chatBodies[0].tools.some((tool) => tool.function?.name === "mcp__node_repl__js"),
     false,
@@ -289,7 +292,10 @@ test("server does not enforce Node REPL bootstrap when chat provider answers dir
       chunks.push(chunk);
     }
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    assert.equal(body.tool_choice, "auto");
+    assert.deepEqual(body.tool_choice, {
+      type: "function",
+      function: { name: "shell_command" },
+    });
     assert.equal(
       body.tools.some((tool) => tool.function?.name === "mcp__node_repl__js"),
       false,
@@ -481,7 +487,10 @@ test("server does not force Node REPL bootstrap for chat interactive requests", 
   }
 
   assert.equal(chatBodies.length, 1);
-  assert.equal(chatBodies[0].tool_choice, "auto");
+  assert.deepEqual(chatBodies[0].tool_choice, {
+    type: "function",
+    function: { name: "shell_command" },
+  });
   assert.equal(
     chatBodies[0].tools.some((tool) => tool.function?.name === "mcp__node_repl__js"),
     false,

@@ -20,6 +20,8 @@ const MCP_TOOL_GUIDANCE =
 const INTERACTIVE_CHAT_FALLBACK_GUIDANCE =
   "CodexBridge interactive-tool guidance: Native Chrome and Computer Use plugins require the GPT/OpenAI Responses route. " +
   "On chat-routed models, use any listed shell or command tools to complete browser/app tasks when possible. " +
+  "Do not read Browser, Chrome, or Computer Use skill files to bootstrap Node REPL on chat-routed models; those native plugin instructions do not apply here. " +
+  "Do not mention Node REPL availability unless the user explicitly asks about it. " +
   "Do not claim all tools are unavailable if another listed tool can do the work.";
 const COMMAND_TOOL_GUIDANCE =
   "CodexBridge command guidance: when the user explicitly asks you to run tests, commit, push, or publish " +
@@ -536,10 +538,23 @@ function preferredToolChoiceForRequest(toolContext, request = {}) {
     return null;
   }
   const nodeReplChatName = chatNameForTool(toolContext, "mcp__node_repl__js");
-  if (!nodeReplChatName) {
-    return null;
+  if (nodeReplChatName) {
+    return { type: "function", function: { name: nodeReplChatName } };
   }
-  return { type: "function", function: { name: nodeReplChatName } };
+  const commandChatName = commandChatNameForToolContext(toolContext);
+  if (commandChatName) {
+    return { type: "function", function: { name: commandChatName } };
+  }
+  return null;
+}
+
+function commandChatNameForToolContext(toolContext) {
+  for (const name of toolContext?.chatToolNames || []) {
+    if (isCommandToolName(name)) {
+      return name;
+    }
+  }
+  return "";
 }
 
 export function interactiveNodeReplToolNameForRequest(toolContext, request = {}) {
@@ -955,7 +970,7 @@ function normalizeToolCallPairs(messages, options = {}) {
 
 function flattenToolCallPairAsText(message, toolMessages) {
   const flattened = [];
-  const toolCallText = toolCallsToText(message.tool_calls);
+  const toolCallText = toolCallsToHistorySummary(message.tool_calls);
   const assistantText = [contentToText(message.content), toolCallText]
     .filter(Boolean)
     .join("\n\n");
@@ -971,24 +986,28 @@ function flattenToolCallPairAsText(message, toolMessages) {
     const id = toolMessage?.tool_call_id ? ` ${toolMessage.tool_call_id}` : "";
     flattened.push({
       role: "user",
-      content: `[Tool output${id}]\n${output || "[empty output]"}`,
+      content: `Previous tool result${id}:\n${output || "[empty output]"}`,
     });
   }
   return flattened;
 }
 
-function toolCallsToText(toolCalls) {
-  const lines = [];
+function toolCallsToHistorySummary(toolCalls) {
+  const names = [];
   for (const toolCall of toolCalls || []) {
-    const name = toolCall?.function?.name || toolCall?.name || "tool";
-    const args = toolCall?.function?.arguments ?? toolCall?.arguments ?? "{}";
-    const id = toolCall?.id ? ` ${toolCall.id}` : "";
-    lines.push(`- ${name}${id}: ${typeof args === "string" ? args : stringifyJson(args)}`);
+    const name = toolCall?.function?.name || toolCall?.name || "";
+    if (name && !names.includes(name)) {
+      names.push(name);
+    }
   }
-  if (lines.length === 0) {
+  if (names.length === 0) {
     return "";
   }
-  return `[Assistant requested tool calls]\n${lines.join("\n")}`;
+  return (
+    "Earlier assistant tool use was summarized for provider compatibility. " +
+    `Tools used earlier: ${names.join(", ")}. ` +
+    "Do not quote this summary as a new tool call; use the current tools list for any new action."
+  );
 }
 
 function hasToolCalls(message) {
@@ -1019,7 +1038,7 @@ function orphanToolOutputMessage(message) {
   const id = message?.tool_call_id ? ` ${message.tool_call_id}` : "";
   return {
     role: "user",
-    content: `[Tool output${id} without its matching assistant tool call]\n${content}`,
+    content: `Previous tool result${id} without its matching assistant tool call:\n${content}`,
   };
 }
 

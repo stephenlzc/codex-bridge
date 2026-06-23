@@ -854,7 +854,7 @@ test("DeepSeek reasoning_content is replayed only for DeepSeek routes", () => {
   assert.equal("reasoning_content" in kimiAssistant, false);
 });
 
-test("DeepSeek flattens prior tool calls that lack reasoning_content", () => {
+test("DeepSeek summarizes prior tool calls without teaching the model fake tool syntax", () => {
   const history = new ResponseHistory();
   history.record("resp_foreign_tool_call", [
     { role: "user", content: "run pwd" },
@@ -913,7 +913,8 @@ test("DeepSeek flattens prior tool calls that lack reasoning_content", () => {
   const transcript = converted.body.messages
     .map((message) => String(message.content || ""))
     .join("\n");
-  assert.match(transcript, /shell_command/);
+  assert.doesNotMatch(transcript, /Assistant requested tool calls/);
+  assert.doesNotMatch(transcript, /shell_command.*"command":"pwd"/);
   assert.match(transcript, /F:\\game_code\\router/);
 });
 
@@ -1181,7 +1182,7 @@ test("chat providers get guidance for flattened MCP tools", () => {
   assert.equal(converted.body.tools[0].function.name, "mcp__sample__ping");
 });
 
-test("chrome and computer-use requests do not force the Node REPL bootstrap tool", () => {
+test("chrome and computer-use requests prefer command fallback instead of Node REPL bootstrap", () => {
   const converted = responsesToChatRequest(
     {
       input: "Chrome 打开 youtube",
@@ -1216,14 +1217,17 @@ test("chrome and computer-use requests do not force the Node REPL bootstrap tool
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.tool_choice, "auto");
+  assert.deepEqual(converted.body.tool_choice, {
+    type: "function",
+    function: { name: "shell_command" },
+  });
   assert.equal(
     converted.body.tools.some((tool) => tool.function?.name === "mcp__node_repl__js"),
     false,
   );
 });
 
-test("interactive plugin requests stay auto when Node REPL is not available", () => {
+test("interactive plugin requests prefer command fallback when Node REPL is not available", () => {
   const converted = responsesToChatRequest(
     {
       input: "Chrome 打开 youtube",
@@ -1240,7 +1244,10 @@ test("interactive plugin requests stay auto when Node REPL is not available", ()
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.tool_choice, "auto");
+  assert.deepEqual(converted.body.tool_choice, {
+    type: "function",
+    function: { name: "shell_command" },
+  });
 });
 
 test("chat providers do not expose Node REPL MCP tools for interactive plugin requests", () => {
@@ -1278,7 +1285,10 @@ test("chat providers do not expose Node REPL MCP tools for interactive plugin re
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.tool_choice, "auto");
+  assert.deepEqual(converted.body.tool_choice, {
+    type: "function",
+    function: { name: "shell_command" },
+  });
   assert.equal(
     converted.body.tools.some((tool) => tool.function?.name === "mcp__node_repl__js"),
     false,
