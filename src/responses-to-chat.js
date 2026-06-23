@@ -564,7 +564,7 @@ export function interactivePluginKindForRequest(request = {}) {
     return "computer";
   }
   const actionPattern =
-    /打开|启动|访问|搜索|点击|关闭|切换|控制|操作|截图|输入|填写|播放|暂停|导航|open|launch|visit|search|click|close|switch|control|operate|screenshot|type|fill|play|navigate/i;
+    /打开|启动|访问|搜索|点击|关闭|切换|控制|操作|截图|输入|填写|播放|暂停|导航|写入|写个|写一段|画|open|launch|visit|search|click|close|switch|control|operate|screenshot|type|fill|play|navigate/i;
   if (!actionPattern.test(text)) {
     return "";
   }

@@ -1,4 +1,4 @@
-const DEFAULT_429_COOLDOWN_MS = 10_000;
+const DEFAULT_429_COOLDOWN_MS = 30_000;
 
 const states = new Map();
 
@@ -7,17 +7,41 @@ let clock = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
-export async function waitForRouteCapacity(route = {}, context = {}) {
+export class RouteRateLimitedError extends Error {
+  constructor(route = {}, retryAfterMs = 0) {
+    super(
+      `Provider is temporarily rate limited for ${route.id || route.model || "this route"}. ` +
+        `Retry after ${Math.ceil(Math.max(0, retryAfterMs) / 1000)}s.`,
+    );
+    this.name = "RouteRateLimitedError";
+    this.statusCode = 429;
+    this.code = "provider_rate_limited";
+    this.retryAfterMs = Math.max(0, retryAfterMs);
+    this.route = {
+      id: route.id || "",
+      displayName: route.displayName || "",
+      model: route.model || "",
+      api: route.api || "",
+    };
+  }
+}
+
+export async function waitForRouteCapacity(route = {}, context = {}, options = {}) {
   const state = stateForRoute(route);
   state.queue = state.queue
     .catch(() => {})
-    .then(() => reserveRouteCapacity(state, route, context));
+    .then(() => reserveRouteCapacity(state, route, context, options));
   return state.queue;
 }
 
 export function markRouteRateLimited(route = {}, headers) {
   const state = stateForRoute(route);
-  const cooldownMs = retryAfterMs(headers) || Number(route.cooldownMs) || DEFAULT_429_COOLDOWN_MS;
+  const headerCooldownMs = retryAfterMs(headers);
+  const fallbackCooldownMs = Math.max(
+    Number(route.cooldownMs || 0),
+    DEFAULT_429_COOLDOWN_MS,
+  );
+  const cooldownMs = headerCooldownMs || fallbackCooldownMs;
   const cooldownUntil = clock.now() + Math.max(0, cooldownMs);
   state.cooldownUntil = Math.max(state.cooldownUntil || 0, cooldownUntil);
 }
@@ -37,7 +61,19 @@ export function __resetRateLimiterForTests() {
   };
 }
 
-async function reserveRouteCapacity(state, route, context) {
+async function reserveRouteCapacity(state, route, context, options = {}) {
+  if (options.failFastOnCooldown !== false) {
+    const cooldownRemainingMs = Math.max(0, Number(state.cooldownUntil || 0) - clock.now());
+    if (cooldownRemainingMs > 0) {
+      if (context.requestId) {
+        console.log(
+          `[${new Date().toISOString()}] ${context.requestId} rate-limit ` +
+            `route=${route.id || route.model || "unknown"} cooldown_remaining_ms=${cooldownRemainingMs}`,
+        );
+      }
+      throw new RouteRateLimitedError(route, cooldownRemainingMs);
+    }
+  }
   await waitUntil(state.cooldownUntil || 0);
   await waitUntil(state.nextAt || 0);
 

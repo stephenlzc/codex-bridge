@@ -178,7 +178,7 @@ test("upstream requests honor per-route rpm before calling providers", async () 
   }
 });
 
-test("upstream 429 response cools down the route before the next provider call", async () => {
+test("upstream 429 response fails fast during route cooldown", async () => {
   const originalFetch = globalThis.fetch;
   const sleeps = [];
   let now = 0;
@@ -231,18 +231,33 @@ test("upstream 429 response cools down the route before the next provider call",
       /Upstream returned HTTP 429/,
     );
 
+    await assert.rejects(
+      callJsonUpstream(
+        "https://api.deepseek.com/v1/chat/completions",
+        route,
+        {
+          model: "deepseek-v4-pro",
+          messages: [{ role: "user", content: "next turn" }],
+        },
+        {},
+      ),
+      /Provider is temporarily rate limited/,
+    );
+
+    assert.equal(calls, 1);
+    assert.deepEqual(sleeps, []);
+
+    now = 2000;
     const response = await callJsonUpstream(
       "https://api.deepseek.com/v1/chat/completions",
       route,
       {
         model: "deepseek-v4-pro",
-        messages: [{ role: "user", content: "next turn" }],
+        messages: [{ role: "user", content: "after cooldown" }],
       },
       {},
     );
-
     assert.equal(calls, 2);
-    assert.deepEqual(sleeps, [2000]);
     assert.deepEqual(response, { ok: true });
   } finally {
     globalThis.fetch = originalFetch;
@@ -250,7 +265,7 @@ test("upstream 429 response cools down the route before the next provider call",
   }
 });
 
-test("upstream 429 cooldown is shared by routes using the same provider key", async () => {
+test("upstream 429 fail-fast cooldown is shared by routes using the same provider key", async () => {
   const originalFetch = globalThis.fetch;
   const sleeps = [];
   let now = 0;
@@ -311,15 +326,27 @@ test("upstream 429 cooldown is shared by routes using the same provider key", as
       /Upstream returned HTTP 429/,
     );
 
+    await assert.rejects(
+      callJsonUpstream(
+        "https://api.deepseek.com/v1/chat/completions",
+        flashRoute,
+        { model: "deepseek-v4-flash" },
+        {},
+      ),
+      /Provider is temporarily rate limited/,
+    );
+
+    assert.equal(calls, 1);
+    assert.deepEqual(sleeps, []);
+
+    now = 3000;
     const response = await callJsonUpstream(
       "https://api.deepseek.com/v1/chat/completions",
       flashRoute,
       { model: "deepseek-v4-flash" },
       {},
     );
-
     assert.equal(calls, 2);
-    assert.deepEqual(sleeps, [3000]);
     assert.deepEqual(response, { ok: true });
   } finally {
     globalThis.fetch = originalFetch;

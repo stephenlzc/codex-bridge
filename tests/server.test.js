@@ -100,6 +100,73 @@ test("server exposes health, models, catalog, and converted responses", async ()
   }
 });
 
+test("server returns a local rate-limit response without retrying the provider", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (_req, res) => {
+    upstreamCalls += 1;
+    res.writeHead(429, {
+      "content-type": "application/json",
+      "retry-after": "30",
+    });
+    res.end(JSON.stringify({ error: { message: "Too Many Requests" } }));
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "kimi-k2-7-code",
+    models: [
+      {
+        id: "kimi-k2-7-code",
+        displayName: "Kimi K2.7 Code",
+        provider: "kimi",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "kimi-k2.7-code",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const first = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "kimi-k2-7-code",
+        input: "Chrome \u6253\u5f00 youtube",
+      }),
+    });
+    const second = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "kimi-k2-7-code",
+        input: "Computer Use \u6253\u5f00\u8bb0\u4e8b\u672c",
+      }),
+    });
+
+    assert.match(first.output_text, /rate limited|token waste/i);
+    assert.match(second.output_text, /rate limited|token waste/i);
+    assert.equal(upstreamCalls, 1);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("server routes Chrome plugin requests to Node REPL for chat providers", async () => {
   const chatBodies = [];
   const upstream = http.createServer(async (req, res) => {
@@ -470,9 +537,10 @@ test("chat routes use OpenAI image fallback for explicit image generation prompt
       {
         id: "kimi-k2-7-code",
         displayName: "Kimi K2.7 Code",
+        provider: "openai",
         api: "chat_completions",
         baseUrl: "http://127.0.0.1:1/v1",
-        model: "kimi-k2.7-code",
+        model: "gpt-4.1",
         apiKey: "kimi-key",
       },
     ],
@@ -684,7 +752,48 @@ test("image fallback ignores image analysis prompts", () => {
       { input: "\u5e2e\u6211\u753b\u4e00\u5f20\u6865\u7684\u56fe\u7247" },
       { api: "chat_completions" },
     ),
+    false,
+  );
+  assert.equal(
+    shouldUseImageGenerationFallback(
+      { input: "\u8c03\u7528 image gen \u5e2e\u6211\u751f\u6210\u4e00\u5f20\u56fe\u7247" },
+      { api: "chat_completions", provider: "openai" },
+    ),
     true,
+  );
+  assert.equal(
+    shouldUseImageGenerationFallback(
+      { input: "\u7535\u8111 \u6253\u5f00\u8bb0\u4e8b\u672c\u5728\u91cc\u9762\u5199\u4e2a\u7b11\u8bdd" },
+      { api: "chat_completions", imageGeneration: { mode: "official" } },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldUseImageGenerationFallback(
+      { input: "Computer Use \u6253\u5f00\u753b\u56fe\u753b\u4e00\u5934\u732a" },
+      { api: "chat_completions", imageGeneration: { mode: "official" } },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldUseImageGenerationFallback(
+      { input: "Chrome \u6253\u5f00 youtube" },
+      { api: "chat_completions", imageGeneration: { mode: "official" } },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldUseImageGenerationFallback(
+      {
+        input: "\u8c03\u7528 image gen \u5e2e\u6211\u751f\u6210\u4e00\u5f20\u56fe\u7247",
+      },
+      {
+        api: "chat_completions",
+        provider: "deepseek",
+        imageGeneration: { mode: "official" },
+      },
+    ),
+    false,
   );
   assert.equal(
     shouldUseImageGenerationFallback(

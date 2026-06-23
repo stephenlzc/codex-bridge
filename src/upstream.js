@@ -352,6 +352,18 @@ export async function proxyChatCompletions(
   try {
     upstream = await callJsonUpstream(upstreamUrl, route, converted.body, context);
   } catch (error) {
+    if (isRateLimitError(error)) {
+      return sendLocalRateLimitedResponse({
+        requestBody,
+        route,
+        history,
+        res,
+        context,
+        converted,
+        messagesForHistory,
+        error,
+      });
+    }
     if (!shouldRetryChatWithoutImages(error, converted.body)) {
       throw error;
     }
@@ -521,6 +533,78 @@ function interactivePluginBootstrapCode(kind) {
 const IMAGE_REJECTED_PLACEHOLDER =
   "[image input omitted because upstream rejected image content]";
 
+function sendLocalRateLimitedResponse({
+  requestBody,
+  route,
+  history,
+  res,
+  context,
+  converted,
+  messagesForHistory,
+  error,
+}) {
+  const localChat = localRateLimitedChat(route, error);
+  const response = chatResponseToResponse(
+    localChat,
+    requestBody.model || route.id,
+    converted.toolContext,
+    { stripReasoningTags: false },
+  );
+
+  history.record(response.id, [
+    ...messagesForHistory,
+    assistantHistoryMessageFromChat(localChat),
+  ]);
+  history.recordResponse(response, {
+    api: "chat_completions",
+    routeId: route.id || "",
+    upstreamModel: route.model || "",
+    upstreamKnown: false,
+    localFallback: "provider_rate_limited",
+  });
+  logUsage(context, route, null);
+
+  if (converted.wantsStream) {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    res.end(responseToSse(response));
+    return;
+  }
+
+  jsonResponse(res, 200, response);
+}
+
+function localRateLimitedChat(route, error) {
+  const retryAfterMs = Number(error?.retryAfterMs || 0);
+  const waitSeconds = Math.ceil(Math.max(0, retryAfterMs) / 1000);
+  const waitText =
+    waitSeconds > 0
+      ? `Please wait about ${waitSeconds}s, then retry or switch to another model.`
+      : "Please wait a moment, then retry or switch to another model.";
+  const displayName = route.displayName || route.id || "the current model";
+  return {
+    id: `chatcmpl_rate_limited_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+    object: "chat.completion",
+    choices: [
+      {
+        message: {
+          role: "assistant",
+          content:
+            `CodexBridge stopped sending requests to ${displayName} because the provider is rate limited. ` +
+            "This turn was handled locally to avoid repeated upstream calls and token waste. " +
+            waitText,
+        },
+      },
+    ],
+    usage: null,
+  };
+}
+
 function sendLocalImageRejectedResponse({
   requestBody,
   route,
@@ -563,6 +647,10 @@ function sendLocalImageRejectedResponse({
   }
 
   jsonResponse(res, 200, response);
+}
+
+function isRateLimitError(error) {
+  return Number(error?.statusCode || 0) === 429;
 }
 
 function localImageRejectedChat(route, retryError) {
@@ -955,7 +1043,11 @@ function throwIfRecentUpstreamFailure(route, upstreamUrl, payload, context = {})
 }
 
 function rememberUpstreamFailure(route, upstreamUrl, payload, error, options = {}) {
-  if (options.cacheFailures === false || error?.cachedUpstreamFailure) {
+  if (
+    options.cacheFailures === false ||
+    error?.cachedUpstreamFailure ||
+    error?.code === "provider_rate_limited"
+  ) {
     return;
   }
   const statusCode = Number(error?.statusCode || 500);
@@ -1043,7 +1135,7 @@ function stableStringify(value) {
 }
 
 async function fetchUpstream(upstreamUrl, init, context = {}, route = {}, options = {}) {
-  await waitForRouteCapacity(route, context);
+  await waitForRouteCapacity(route, context, options);
   const proxiedInit = fetchInitWithProxy(upstreamUrl, init);
   const usedProxy = Boolean(proxiedInit.dispatcher);
   const proxyLabel = proxyLogLabel(upstreamUrl);

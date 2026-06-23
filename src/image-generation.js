@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { requireApiKey, joinUpstreamUrl } from "./config.js";
-import { contentToText, responseRequestToChatSourceMessages } from "./responses-to-chat.js";
+import {
+  contentToText,
+  interactivePluginKindForRequest,
+  responseRequestToChatSourceMessages,
+} from "./responses-to-chat.js";
 import { assistantHistoryMessageFromResponse, responseToSse } from "./chat-to-responses.js";
 import { jsonResponse } from "./json.js";
 
@@ -19,6 +23,9 @@ const OFFICIAL_IMAGE_GENERATION = {
 export function shouldUseImageGenerationFallback(requestBody, route) {
   const settings = imageGenerationSettings(route);
   if (!requestBody || !settings.enabled) {
+    return false;
+  }
+  if (interactivePluginKindForRequest(requestBody)) {
     return false;
   }
   const customProvider = settings.mode === "custom";
@@ -197,7 +204,7 @@ export function imageGenerationSettings(route = {}) {
   const raw = route?.imageGeneration && typeof route.imageGeneration === "object"
     ? route.imageGeneration
     : {};
-  const mode = String(raw.mode || OFFICIAL_IMAGE_GENERATION.mode).toLowerCase();
+  const mode = String(raw.mode || defaultImageGenerationMode(route)).toLowerCase();
   if (raw.enabled === false || mode === "off" || mode === "disabled") {
     return {
       enabled: false,
@@ -213,7 +220,23 @@ export function imageGenerationSettings(route = {}) {
     };
   }
 
-  const official = mode !== "custom";
+  const officialAllowed = defaultImageGenerationMode(route) === OFFICIAL_IMAGE_GENERATION.mode;
+  const official = mode !== "custom" && officialAllowed;
+  if (mode !== "custom" && !officialAllowed) {
+    return {
+      enabled: false,
+      mode: "off",
+      id: raw.id || `${route?.id || "route"}-image-generation-off`,
+      displayName: raw.displayName || "Image Generation Disabled",
+      baseUrl: "",
+      endpoint: raw.endpoint || OFFICIAL_IMAGE_GENERATION.endpoint,
+      model: "",
+      size: raw.size || imageSize(),
+      apiKeyEnv: "",
+      apiKey: raw.apiKey,
+    };
+  }
+
   return {
     enabled: true,
     mode: official ? "official" : "custom",
@@ -238,6 +261,15 @@ export function imageGenerationSettings(route = {}) {
       (official ? OFFICIAL_IMAGE_GENERATION.apiKeyEnv : "IMAGE_GENERATION_API_KEY"),
     apiKey: raw.apiKey,
   };
+}
+
+function defaultImageGenerationMode(route = {}) {
+  const provider = String(route.provider || route.providerId || "").toLowerCase();
+  const authMode = String(route.authMode || "").toLowerCase();
+  if (provider === "codex" || provider === "openai" || authMode === "codex_openai") {
+    return OFFICIAL_IMAGE_GENERATION.mode;
+  }
+  return "off";
 }
 
 function hasNativeImageGenerationTool(tools = []) {
@@ -295,17 +327,23 @@ function isExplicitImageGenerationPrompt(text) {
   if (!value.trim()) {
     return false;
   }
-  const mentionsImageTool = /(?:image\s*[_-]?\s*gen(?:eration)?|图片生成|图像生成|文生图|生图|画图)/i.test(value);
+  const mentionsImageTool = /(?:image\s*[_-]?\s*gen(?:eration)?|图片生成|图像生成|文生图|生图)/i.test(value);
   const asksCreation =
     /(?:生成|绘制|画图|画一张|画个|帮我画|做一张|做个|制作|create|generate|draw|make|produce)/i.test(
       value,
     );
   const asksImage =
     /(?:图片|图像|照片|插画|海报|头像|logo|icon|image|picture|photo|illustration|poster)/i.test(value);
-  if (mentionsImageTool && asksCreation) {
-    return true;
-  }
-  return asksCreation && asksImage;
+  const englishImageCreation =
+    /\b(?:create|generate|draw|make|produce|render)\b[\s\S]{0,80}\b(?:image|picture|photo|illustration|poster|logo|icon)\b/i.test(value) ||
+    /\b(?:image|picture|photo|illustration|poster|logo|icon)\b[\s\S]{0,80}\b(?:create|generate|draw|make|produce|render)\b/i.test(value);
+  const chineseImageGeneration =
+    /(?:生图|文生图|生成[\s\S]{0,12}(?:图片|图像|照片|插画|海报|头像|图标)|(?:图片|图像|照片|插画|海报|头像|图标)[\s\S]{0,12}生成)/i.test(value);
+  return (
+    (mentionsImageTool && (asksCreation || asksImage)) ||
+    englishImageCreation ||
+    chineseImageGeneration
+  );
 }
 
 function isGenericImagePrompt(text) {

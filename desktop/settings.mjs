@@ -1992,8 +1992,20 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
   return route;
 }
 
-function imageGenerationForModel(_model, override) {
-  return normalizeImageGenerationSettings(override || { mode: "official" });
+function imageGenerationForModel(model = {}, override) {
+  if (override) {
+    return normalizeImageGenerationSettings(override);
+  }
+  return normalizeImageGenerationSettings(defaultImageGenerationForModel(model));
+}
+
+function defaultImageGenerationForModel(model = {}) {
+  const providerId = String(model.providerId || model.provider || "").toLowerCase();
+  const authMode = String(model.authMode || "").toLowerCase();
+  if (providerId === "codex" || providerId === "openai" || authMode === "codex_openai") {
+    return { mode: "official" };
+  }
+  return { mode: "off" };
 }
 
 function normalizeImageGenerationSettings(input = {}) {

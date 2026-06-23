@@ -583,8 +583,14 @@ function imageGenerationControl(model) {
 
 function imageGenerationSettingsForModel(model) {
   const override = state.imageGenerationOverrides?.[model.presetId];
-  if (override) {
+  if (override?.mode === "custom" || override?.mode === "off") {
     return override;
+  }
+  if (override?.mode === "official" && modelAllowsOfficialImageGeneration(model)) {
+    return override;
+  }
+  if (!modelAllowsOfficialImageGeneration(model)) {
+    return { mode: "off" };
   }
   return {
     enabled: true,
@@ -596,6 +602,12 @@ function imageGenerationSettingsForModel(model) {
     size: "1024x1024",
     apiKeyEnv: "OPENAI_API_KEY",
   };
+}
+
+function modelAllowsOfficialImageGeneration(model = {}) {
+  const providerId = String(model.providerId || model.provider || "").toLowerCase();
+  const authMode = String(model.authMode || "").toLowerCase();
+  return providerId === "codex" || providerId === "openai" || authMode === "codex_openai";
 }
 
 function renderImageGenerationPanelMode(panel) {
@@ -637,10 +649,14 @@ function saveImageGenerationSettings(button) {
 
 function imageGenerationPayload(panel) {
   const mode = panel.querySelector("[data-image-gen-mode]")?.value || "official";
+  const model = modelMap().get(panel.dataset.presetId);
   if (mode === "off") {
     return { mode: "off" };
   }
   if (mode !== "custom") {
+    if (!modelAllowsOfficialImageGeneration(model)) {
+      return { mode: "off" };
+    }
     return { mode: "official" };
   }
   return {

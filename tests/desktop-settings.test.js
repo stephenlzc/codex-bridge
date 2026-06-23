@@ -551,7 +551,7 @@ test("image generation provider can be configured per model", () => {
   const defaultConfig = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
   assert.equal(defaultConfig.models[0].imageGeneration.mode, "official");
   assert.equal(defaultConfig.models[0].imageGeneration.apiKeyEnv, "OPENAI_API_KEY");
-  assert.equal(defaultConfig.models[1].imageGeneration.mode, "official");
+  assert.equal(defaultConfig.models[1].imageGeneration.mode, "off");
 
   saveModelImageGenerationOverride(rootDir, "deepseek-v4-pro", {
     mode: "custom",
