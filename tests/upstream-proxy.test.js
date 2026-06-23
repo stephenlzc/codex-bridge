@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { callJsonUpstream, proxyResponsesApi } from "../src/upstream.js";
+import {
+  __resetUpstreamFailureCacheForTests,
+  callJsonUpstream,
+  proxyResponsesApi,
+} from "../src/upstream.js";
 import {
   __resetRateLimiterForTests,
   __setRateLimitClockForTests,
@@ -218,7 +222,10 @@ test("upstream 429 response cools down the route before the next provider call",
       callJsonUpstream(
         "https://api.deepseek.com/v1/chat/completions",
         route,
-        { model: "deepseek-v4-pro" },
+        {
+          model: "deepseek-v4-pro",
+          messages: [{ role: "user", content: "first turn" }],
+        },
         {},
       ),
       /Upstream returned HTTP 429/,
@@ -227,7 +234,10 @@ test("upstream 429 response cools down the route before the next provider call",
     const response = await callJsonUpstream(
       "https://api.deepseek.com/v1/chat/completions",
       route,
-      { model: "deepseek-v4-pro" },
+      {
+        model: "deepseek-v4-pro",
+        messages: [{ role: "user", content: "next turn" }],
+      },
       {},
     );
 
@@ -313,6 +323,127 @@ test("upstream 429 cooldown is shared by routes using the same provider key", as
     assert.deepEqual(response, { ok: true });
   } finally {
     globalThis.fetch = originalFetch;
+    __resetRateLimiterForTests();
+  }
+});
+
+test("identical upstream failures are short-circuited without another provider call", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: { message: "Too Many Requests" } }), {
+      status: 429,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  __resetUpstreamFailureCacheForTests();
+  __resetRateLimiterForTests();
+
+  try {
+    const route = {
+      id: "kimi-k2.7-code",
+      provider: "kimi",
+      api: "chat_completions",
+      baseUrl: "https://api.moonshot.cn/v1",
+      model: "kimi-k2.7-code",
+      apiKeyEnv: "MOONSHOT_API_KEY",
+      apiKey: "test-key",
+    };
+    const payload = {
+      model: "kimi-k2.7-code",
+      messages: [{ role: "user", content: "hello" }],
+    };
+
+    await assert.rejects(
+      callJsonUpstream(
+        "https://api.moonshot.cn/v1/chat/completions",
+        route,
+        payload,
+        { requestId: "req_first" },
+      ),
+      /Upstream returned HTTP 429/,
+    );
+
+    await assert.rejects(
+      callJsonUpstream(
+        "https://api.moonshot.cn/v1/chat/completions",
+        route,
+        payload,
+        { requestId: "req_retry" },
+      ),
+      /Upstream returned HTTP 429/,
+    );
+
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __resetUpstreamFailureCacheForTests();
+    __resetRateLimiterForTests();
+  }
+});
+
+test("upstream failure cache does not block a different user turn", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  __resetUpstreamFailureCacheForTests();
+  __resetRateLimiterForTests();
+
+  try {
+    const route = {
+      id: "kimi-k2.7-code",
+      provider: "kimi",
+      api: "chat_completions",
+      baseUrl: "https://api.moonshot.cn/v1",
+      model: "kimi-k2.7-code",
+      apiKey: "test-key",
+    };
+
+    await assert.rejects(
+      callJsonUpstream(
+        "https://api.moonshot.cn/v1/chat/completions",
+        route,
+        {
+          model: "kimi-k2.7-code",
+          messages: [{ role: "user", content: "bad turn" }],
+        },
+        {},
+      ),
+      /Upstream returned HTTP 400/,
+    );
+
+    const response = await callJsonUpstream(
+      "https://api.moonshot.cn/v1/chat/completions",
+      route,
+      {
+        model: "kimi-k2.7-code",
+        messages: [{ role: "user", content: "next turn" }],
+      },
+      {},
+    );
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    __resetUpstreamFailureCacheForTests();
     __resetRateLimiterForTests();
   }
 });

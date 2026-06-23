@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cloneJson, jsonResponse, openAiError, stringifyJson, tryParseJson } from "./json.js";
 import { authModeForRoute, joinUpstreamUrl, requireApiKey } from "./config.js";
 import {
@@ -21,6 +22,12 @@ import { fetchInitWithProxy, proxyLogLabel } from "./proxy.js";
 import { markRouteRateLimited, waitForRouteCapacity } from "./rate-limit.js";
 
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
+const FAILURE_CACHE_MAX_ENTRIES = 200;
+const FAILURE_CACHE_DEFAULT_TTL_MS = 30_000;
+const FAILURE_CACHE_FATAL_TTL_MS = 120_000;
+const FAILURE_CACHE_TRANSIENT_TTL_MS = 15_000;
+
+const recentUpstreamFailures = new Map();
 
 const CODEX_PASSTHROUGH_HEADERS = [
   "chatgpt-account-id",
@@ -125,19 +132,28 @@ export async function proxyResponsesApi(
   }
 
   const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
+  throwIfRecentUpstreamFailure(route, upstreamUrl, payload, context);
   logRoute(context, route, upstreamUrl);
-  const upstream = await fetchUpstream(upstreamUrl, {
-    method: "POST",
-    headers: upstreamHeaders(route, context, {
-      acceptEventStream: Boolean(payload.stream),
-    }),
-    body: JSON.stringify(payload),
-  }, context, route);
+  let upstream;
+  try {
+    upstream = await fetchUpstream(upstreamUrl, {
+      method: "POST",
+      headers: upstreamHeaders(route, context, {
+        acceptEventStream: Boolean(payload.stream),
+      }),
+      body: JSON.stringify(payload),
+    }, context, route);
+  } catch (error) {
+    rememberUpstreamFailure(route, upstreamUrl, payload, error);
+    throw error;
+  }
   logStatus(context, route, upstream.status);
 
   if (!upstream.ok) {
     const bodyText = await upstream.text();
-    throw new UpstreamHttpError(upstream.status, bodyText, upstreamUrl, route);
+    const error = new UpstreamHttpError(upstream.status, bodyText, upstreamUrl, route);
+    rememberUpstreamFailure(route, upstreamUrl, payload, error);
+    throw error;
   }
 
   res.writeHead(upstream.status, filteredHeaders(upstream.headers));
@@ -669,25 +685,40 @@ export async function callJsonUpstream(
   context = {},
   options = {},
 ) {
-  const upstream = await fetchUpstream(upstreamUrl, {
-    method: "POST",
-    headers: upstreamHeaders(route, context),
-    body: JSON.stringify(payload),
-  }, context, route, options);
+  throwIfRecentUpstreamFailure(route, upstreamUrl, payload, context);
+  let upstream;
+  try {
+    upstream = await fetchUpstream(upstreamUrl, {
+      method: "POST",
+      headers: upstreamHeaders(route, context),
+      body: JSON.stringify(payload),
+    }, context, route, options);
+  } catch (error) {
+    rememberUpstreamFailure(route, upstreamUrl, payload, error, options);
+    throw error;
+  }
   const text = await upstream.text();
   if (!upstream.ok) {
-    throw new UpstreamHttpError(upstream.status, text, upstreamUrl, route);
+    const error = new UpstreamHttpError(upstream.status, text, upstreamUrl, route);
+    rememberUpstreamFailure(route, upstreamUrl, payload, error, options);
+    throw error;
   }
   const parsed = tryParseJson(text);
   if (!parsed) {
-    throw new UpstreamHttpError(
+    const error = new UpstreamHttpError(
       502,
       `Upstream returned non-JSON body: ${text.slice(0, 500)}`,
       upstreamUrl,
       route,
     );
+    rememberUpstreamFailure(route, upstreamUrl, payload, error, options);
+    throw error;
   }
   return parsed;
+}
+
+export function __resetUpstreamFailureCacheForTests() {
+  recentUpstreamFailures.clear();
 }
 
 export function sendUpstreamError(res, error) {
@@ -890,6 +921,125 @@ function logUsage(context, route, usage) {
       `route=${route.id} usage prompt=${normalized.prompt_tokens} ` +
       `completion=${normalized.completion_tokens} total=${normalized.total_tokens}`,
   );
+}
+
+function throwIfRecentUpstreamFailure(route, upstreamUrl, payload, context = {}) {
+  const key = upstreamFailureKey(route, upstreamUrl, payload);
+  const cached = recentUpstreamFailures.get(key);
+  if (!cached) {
+    return;
+  }
+  const now = Date.now();
+  if (cached.expiresAt <= now) {
+    recentUpstreamFailures.delete(key);
+    return;
+  }
+
+  cached.hits += 1;
+  const remainingMs = Math.max(0, cached.expiresAt - now);
+  const requestId = context.requestId || "req";
+  console.warn(
+    `[${new Date().toISOString()}] ${requestId} !! upstream ` +
+      `route=${route.id || route.model || "unknown"} cached_failure ` +
+      `status=${cached.statusCode} remaining_ms=${remainingMs}`,
+  );
+
+  const error = new UpstreamHttpError(
+    cached.statusCode,
+    cached.bodyText,
+    upstreamUrl,
+    route,
+  );
+  error.cachedUpstreamFailure = true;
+  throw error;
+}
+
+function rememberUpstreamFailure(route, upstreamUrl, payload, error, options = {}) {
+  if (options.cacheFailures === false || error?.cachedUpstreamFailure) {
+    return;
+  }
+  const statusCode = Number(error?.statusCode || 500);
+  const ttlMs = upstreamFailureTtlMs(statusCode, route);
+  if (ttlMs <= 0) {
+    return;
+  }
+  trimUpstreamFailureCache();
+  recentUpstreamFailures.set(upstreamFailureKey(route, upstreamUrl, payload), {
+    statusCode,
+    bodyText: upstreamFailureBodyText(error),
+    expiresAt: Date.now() + ttlMs,
+    hits: 0,
+  });
+}
+
+function upstreamFailureTtlMs(statusCode, route = {}) {
+  if (statusCode === 401) {
+    return 0;
+  }
+  if (statusCode === 429) {
+    return Math.max(
+      Number(route.cooldownMs || 0),
+      FAILURE_CACHE_DEFAULT_TTL_MS,
+    );
+  }
+  if ([400, 403, 413, 415, 422].includes(statusCode)) {
+    return FAILURE_CACHE_FATAL_TTL_MS;
+  }
+  if ([408, 409, 425, 500, 502, 503, 504, 599].includes(statusCode)) {
+    return FAILURE_CACHE_TRANSIENT_TTL_MS;
+  }
+  return 0;
+}
+
+function upstreamFailureBodyText(error) {
+  if (error instanceof UpstreamHttpError) {
+    return error.bodyText || error.message || "Upstream request failed";
+  }
+  return error?.message || String(error || "Upstream request failed");
+}
+
+function trimUpstreamFailureCache() {
+  const now = Date.now();
+  for (const [key, value] of recentUpstreamFailures) {
+    if (value.expiresAt <= now) {
+      recentUpstreamFailures.delete(key);
+    }
+  }
+  while (recentUpstreamFailures.size >= FAILURE_CACHE_MAX_ENTRIES) {
+    const oldestKey = recentUpstreamFailures.keys().next().value;
+    recentUpstreamFailures.delete(oldestKey);
+  }
+}
+
+function upstreamFailureKey(route, upstreamUrl, payload) {
+  const material = stableStringify({
+    route: {
+      id: route.id || "",
+      provider: route.provider || route.providerId || "",
+      api: route.api || "",
+      model: route.model || "",
+      baseUrl: route.baseUrl || "",
+      authMode: authModeForRoute(route),
+      apiKeyEnv: route.apiKeyEnv || route.keyEnv || "",
+      inlineApiKeyPresent: Boolean(route.apiKey),
+    },
+    upstreamUrl: safeUrl(upstreamUrl),
+    payload,
+  });
+  return createHash("sha256").update(material).digest("hex");
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const keys = Object.keys(value).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    .join(",")}}`;
 }
 
 async function fetchUpstream(upstreamUrl, init, context = {}, route = {}, options = {}) {
