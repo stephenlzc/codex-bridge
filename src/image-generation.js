@@ -28,14 +28,10 @@ export function shouldUseImageGenerationFallback(requestBody, route) {
   if (interactivePluginKindForRequest(requestBody)) {
     return false;
   }
-  const customProvider = settings.mode === "custom";
-  if (route?.api !== "chat_completions" && !customProvider) {
+  if (settings.mode !== "custom") {
     return false;
   }
-  if (hasNativeImageGenerationTool(requestBody.tools) && !customProvider) {
-    return false;
-  }
-  return isExplicitImageGenerationPrompt(promptTextFromRequest(requestBody));
+  return hasNativeImageGenerationTool(requestBody.tools);
 }
 
 export async function proxyImageGenerationFallback(
@@ -320,30 +316,6 @@ function promptTextFromRequest(requestBody) {
     userParts.push(contentToText(item.content ?? item.text ?? item.output ?? ""));
   }
   return userParts.filter(Boolean).join("\n");
-}
-
-function isExplicitImageGenerationPrompt(text) {
-  const value = String(text || "").toLowerCase();
-  if (!value.trim()) {
-    return false;
-  }
-  const mentionsImageTool = /(?:image\s*[_-]?\s*gen(?:eration)?|图片生成|图像生成|文生图|生图)/i.test(value);
-  const asksCreation =
-    /(?:生成|绘制|画图|画一张|画个|帮我画|做一张|做个|制作|create|generate|draw|make|produce)/i.test(
-      value,
-    );
-  const asksImage =
-    /(?:图片|图像|照片|插画|海报|头像|logo|icon|image|picture|photo|illustration|poster)/i.test(value);
-  const englishImageCreation =
-    /\b(?:create|generate|draw|make|produce|render)\b[\s\S]{0,80}\b(?:image|picture|photo|illustration|poster|logo|icon)\b/i.test(value) ||
-    /\b(?:image|picture|photo|illustration|poster|logo|icon)\b[\s\S]{0,80}\b(?:create|generate|draw|make|produce|render)\b/i.test(value);
-  const chineseImageGeneration =
-    /(?:生图|文生图|生成[\s\S]{0,12}(?:图片|图像|照片|插画|海报|头像|图标)|(?:图片|图像|照片|插画|海报|头像|图标)[\s\S]{0,12}生成)/i.test(value);
-  return (
-    (mentionsImageTool && (asksCreation || asksImage)) ||
-    englishImageCreation ||
-    chineseImageGeneration
-  );
 }
 
 function isGenericImagePrompt(text) {
