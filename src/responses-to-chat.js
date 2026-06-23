@@ -495,6 +495,13 @@ function preferredToolChoiceForRequest(toolContext, request = {}) {
   return { type: "function", function: { name: nodeReplChatName } };
 }
 
+export function interactiveNodeReplToolNameForRequest(toolContext, request = {}) {
+  if (!interactivePluginKindForRequest(request)) {
+    return "";
+  }
+  return chatNameForTool(toolContext, "mcp__node_repl__js");
+}
+
 function chatNameForTool(toolContext, responseName) {
   const mapped = toolContext.responseNameToChatName.get(responseName);
   if (mapped) {
@@ -507,15 +514,33 @@ function chatNameForTool(toolContext, responseName) {
 }
 
 function requestMentionsInteractivePluginWork(request = {}) {
+  return Boolean(interactivePluginKindForRequest(request));
+}
+
+export function interactivePluginKindForRequest(request = {}) {
   const text = `${request.instructions || ""}\n${requestInputText(request.input ?? request.messages)}`;
-  if (/@chrome\b|computer\s*use|电脑操控|控制电脑/i.test(text)) {
-    return true;
+  if (/@chrome\b|control[-_\s]?chrome|chrome\s*:/i.test(text)) {
+    return "chrome";
+  }
+  if (/computer\s*use|@computer\b|电脑操控|控制电脑/i.test(text)) {
+    return "computer";
   }
   const actionPattern =
     /打开|启动|访问|搜索|点击|关闭|切换|控制|操作|截图|输入|填写|播放|暂停|导航|open|launch|visit|search|click|close|switch|control|operate|screenshot|type|fill|play|navigate/i;
-  const targetPattern =
-    /chrome|browser|谷歌浏览器|浏览器|youtube|网页|网站|电脑|桌面|窗口|notepad|记事本|画图|mspaint|应用|软件/i;
-  return actionPattern.test(text) && targetPattern.test(text);
+  if (!actionPattern.test(text)) {
+    return "";
+  }
+  const computerTargetPattern =
+    /电脑|桌面|窗口|notepad|记事本|画图|mspaint|应用|软件/i;
+  if (computerTargetPattern.test(text)) {
+    return "computer";
+  }
+  const chromeTargetPattern =
+    /chrome|browser|谷歌浏览器|浏览器|youtube|网页|网站/i;
+  if (chromeTargetPattern.test(text)) {
+    return "chrome";
+  }
+  return "";
 }
 
 function shouldDrop(route, param) {

@@ -2,6 +2,8 @@ import { cloneJson, jsonResponse, openAiError, stringifyJson, tryParseJson } fro
 import { authModeForRoute, joinUpstreamUrl, requireApiKey } from "./config.js";
 import {
   contentToText,
+  interactiveNodeReplToolNameForRequest,
+  interactivePluginKindForRequest,
   responseRequestToChatSourceMessages,
   responsesToChatRequest,
 } from "./responses-to-chat.js";
@@ -365,9 +367,15 @@ export async function proxyChatCompletions(
       });
     }
   }
-  logUsage(context, route, upstream.usage);
-  const response = chatResponseToResponse(
+  const adjustedUpstream = enforceInteractivePluginBootstrap(
     upstream,
+    requestBody,
+    converted,
+    context,
+  );
+  logUsage(context, route, adjustedUpstream.usage);
+  const response = chatResponseToResponse(
+    adjustedUpstream,
     requestBody.model || route.id,
     converted.toolContext,
     { stripReasoningTags: shouldStripReasoningTags(route) },
@@ -375,7 +383,7 @@ export async function proxyChatCompletions(
 
   history.record(response.id, [
     ...messagesForHistory,
-    assistantHistoryMessageFromChat(upstream),
+    assistantHistoryMessageFromChat(adjustedUpstream),
   ]);
   history.recordResponse(response, {
     api: "chat_completions",
@@ -396,6 +404,102 @@ export async function proxyChatCompletions(
   }
 
   jsonResponse(res, 200, response);
+}
+
+function enforceInteractivePluginBootstrap(upstream, requestBody, converted, context = {}) {
+  const kind = interactivePluginKindForRequest(requestBody);
+  if (!kind) {
+    return upstream;
+  }
+  const nodeReplToolName = interactiveNodeReplToolNameForRequest(
+    converted.toolContext,
+    requestBody,
+  );
+  if (!nodeReplToolName) {
+    return upstream;
+  }
+
+  const message = upstream?.choices?.[0]?.message;
+  if (messageHasToolCall(message, nodeReplToolName)) {
+    return upstream;
+  }
+
+  const adjusted = cloneJson(upstream);
+  if (!Array.isArray(adjusted.choices) || adjusted.choices.length === 0) {
+    adjusted.choices = [{ index: 0, finish_reason: "tool_calls", message: {} }];
+  }
+  adjusted.choices[0].finish_reason = "tool_calls";
+  adjusted.choices[0].message = {
+    role: "assistant",
+    content: null,
+    tool_calls: [
+      {
+        id: `call_codexbridge_${kind}_bootstrap`,
+        type: "function",
+        function: {
+          name: nodeReplToolName,
+          arguments: JSON.stringify({
+            code: interactivePluginBootstrapCode(kind),
+          }),
+        },
+      },
+    ],
+  };
+
+  console.warn(
+    `[${new Date().toISOString()}] ${context.requestId || "req"} ` +
+      `!! interactive ${kind} request forced through ${nodeReplToolName}`,
+  );
+  return adjusted;
+}
+
+function messageHasToolCall(message, toolName) {
+  return (message?.tool_calls || []).some((toolCall) => {
+    const name = toolCall?.function?.name || toolCall?.name || "";
+    return name === toolName;
+  });
+}
+
+function interactivePluginBootstrapCode(kind) {
+  const scriptName =
+    kind === "computer" ? "computer-use-client.mjs" : "browser-client.mjs";
+  const pluginName = kind === "computer" ? "computer-use" : "chrome";
+  const setupImport =
+    kind === "computer"
+      ? "const { setupComputerUseRuntime } = await import(pluginScriptUrl('computer-use', 'computer-use-client.mjs'));"
+      : "const { setupBrowserRuntime } = await import(pluginScriptUrl('chrome', 'browser-client.mjs'));";
+  const setupCall =
+    kind === "computer"
+      ? [
+          "await setupComputerUseRuntime({ globals: globalThis });",
+          "const apps = await sky.list_apps();",
+          "nodeRepl.write(JSON.stringify({ ready: true, plugin: 'computer-use', apps }, null, 2));",
+        ].join("\n")
+      : [
+          "await setupBrowserRuntime({ globals: globalThis });",
+          "globalThis.browser = await agent.browsers.get('extension');",
+          "nodeRepl.write(await browser.documentation());",
+        ].join("\n");
+
+  return [
+    "const fs = await import('node:fs');",
+    "const path = await import('node:path');",
+    "const { pathToFileURL } = await import('node:url');",
+    "function pluginScriptUrl(pluginName, scriptName) {",
+    "  const root = path.join(nodeRepl.homeDir, '.codex', 'plugins', 'cache', 'openai-bundled', pluginName);",
+    "  const versions = fs.existsSync(root)",
+    "    ? fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort()",
+    "    : [];",
+    "  for (const version of versions.reverse()) {",
+    "    const scriptPath = path.join(root, version, 'scripts', scriptName);",
+    "    if (fs.existsSync(scriptPath)) return pathToFileURL(scriptPath).href;",
+    "  }",
+    "  throw new Error(`CodexBridge could not find ${scriptName} under ${root}`);",
+    "}",
+    `// CodexBridge official ${pluginName} bootstrap via ${scriptName}.`,
+    setupImport,
+    setupCall,
+  ].join("\n");
 }
 
 const IMAGE_REJECTED_PLACEHOLDER =

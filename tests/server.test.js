@@ -213,6 +213,211 @@ test("server routes Chrome plugin requests to Node REPL for chat providers", asy
   });
 });
 
+test("server enforces Node REPL bootstrap when chat provider ignores Chrome tool choice", async () => {
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.deepEqual(body.tool_choice, {
+      type: "function",
+      function: { name: "mcp__node_repl__js" },
+    });
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "chatcmpl_chrome_ignored",
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content:
+                "Node REPL is unavailable, so I will use PowerShell fallback.",
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    models: [
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: "Chrome 打开 youtube",
+        tools: [
+          {
+            type: "namespace",
+            name: "mcp__node_repl__",
+            tools: [
+              {
+                type: "function",
+                name: "js",
+                description: "Run JavaScript.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    code: { type: "string" },
+                  },
+                  required: ["code"],
+                },
+              },
+            ],
+          },
+          {
+            type: "function",
+            name: "shell_command",
+            description: "Run shell.",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(response.output.length, 1);
+    assert.equal(response.output[0].type, "function_call");
+    assert.equal(response.output[0].name, "mcp__node_repl__js");
+    assert.match(response.output[0].arguments, /browser-client\.mjs/);
+    assert.doesNotMatch(response.output_text, /PowerShell fallback/);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("server replaces shell fallback tool calls for Computer Use requests", async () => {
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "chatcmpl_computer_wrong_tool",
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_shell",
+                  type: "function",
+                  function: {
+                    name: "shell_command",
+                    arguments: JSON.stringify({ command: "Start-Process notepad" }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    models: [
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+
+  try {
+    const response = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: "Computer Use 打开记事本",
+        tools: [
+          {
+            type: "namespace",
+            name: "mcp__node_repl__",
+            tools: [
+              {
+                type: "function",
+                name: "js",
+                description: "Run JavaScript.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    code: { type: "string" },
+                  },
+                  required: ["code"],
+                },
+              },
+            ],
+          },
+          {
+            type: "function",
+            name: "shell_command",
+            description: "Run shell.",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(response.output.length, 1);
+    assert.equal(response.output[0].type, "function_call");
+    assert.equal(response.output[0].name, "mcp__node_repl__js");
+    assert.match(response.output[0].arguments, /computer-use-client\.mjs/);
+    assert.doesNotMatch(response.output[0].arguments, /Start-Process/);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("chat routes use OpenAI image fallback for explicit image generation prompts", async () => {
   const previousEnv = snapshotEnv([
     "OPENAI_API_KEY",
