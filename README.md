@@ -18,6 +18,14 @@ Latest portable builds:
 - Mac M series: [CodexBridge-macOS-arm64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-arm64-Portable.zip)
 - Mac Intel: [CodexBridge-macOS-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-x64-Portable.zip)
 
+macOS note:
+
+macOS 提示“已损坏”或无法打开时，先把 `CodexBridge.app` 放到“应用程序”，然后打开“终端”执行下面命令，输入电脑密码并回车：
+
+```bash
+sudo xattr -cr /Applications/CodexBridge.app
+```
+
 Release history:
 
 历史版本：
