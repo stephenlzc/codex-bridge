@@ -167,6 +167,153 @@ test("server returns a local rate-limit response without retrying the provider",
   }
 });
 
+test("server stops runaway chat tool loops after repeated tool continuations", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    upstreamCalls += 1;
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: `chatcmpl_tool_loop_${upstreamCalls}`,
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "I will keep using tools.",
+              tool_calls: [
+                {
+                  id: `call_loop_${upstreamCalls}`,
+                  type: "function",
+                  function: {
+                    name: "shell_command",
+                    arguments: JSON.stringify({
+                      command: `echo loop ${upstreamCalls}`,
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 100 + upstreamCalls,
+          completion_tokens: 10,
+          total_tokens: 110 + upstreamCalls,
+        },
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    models: [
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+        maxToolContinuationTurns: 1,
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+  const tools = [
+    {
+      type: "function",
+      name: "shell_command",
+      description: "Run shell.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string" },
+        },
+        required: ["command"],
+      },
+    },
+  ];
+
+  try {
+    const first = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: "create a file, write a joke, then delete it",
+        tools,
+      }),
+    });
+    const firstCall = first.output.find((item) => item.type === "function_call");
+    assert.ok(firstCall);
+
+    const second = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        previous_response_id: first.id,
+        input: [
+          {
+            type: "function_call_output",
+            call_id: firstCall.call_id,
+            output: "created file",
+          },
+        ],
+        tools,
+      }),
+    });
+    const secondCall = second.output.find((item) => item.type === "function_call");
+    assert.ok(secondCall);
+
+    const third = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        previous_response_id: second.id,
+        input: [
+          {
+            type: "function_call_output",
+            call_id: secondCall.call_id,
+            output: "deleted file",
+          },
+        ],
+        tools,
+      }),
+    });
+
+    assert.equal(
+      third.output.some((item) => item.type === "function_call"),
+      false,
+    );
+    assert.match(third.output_text, /stopped.*tool loop/i);
+    assert.equal(upstreamCalls, 3);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("server suppresses unexpected Node REPL tool calls from chat providers", async () => {
   const chatBodies = [];
   const upstream = http.createServer(async (req, res) => {

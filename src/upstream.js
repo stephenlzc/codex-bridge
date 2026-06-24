@@ -20,12 +20,14 @@ import {
 } from "./image-generation.js";
 import { fetchInitWithProxy, proxyLogLabel } from "./proxy.js";
 import { markRouteRateLimited, waitForRouteCapacity } from "./rate-limit.js";
+import { isResponseToolCallItem, isResponseToolOutputItem } from "./tools.js";
 
 const CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 const FAILURE_CACHE_MAX_ENTRIES = 200;
 const FAILURE_CACHE_DEFAULT_TTL_MS = 30_000;
 const FAILURE_CACHE_FATAL_TTL_MS = 120_000;
 const FAILURE_CACHE_TRANSIENT_TTL_MS = 15_000;
+const DEFAULT_CHAT_TOOL_CONTINUATION_TURNS = 3;
 
 const recentUpstreamFailures = new Map();
 
@@ -345,6 +347,7 @@ export async function proxyChatCompletions(
   context = {},
 ) {
   const converted = responsesToChatRequest(requestBody, route, history);
+  const toolContinuationTurns = chatToolContinuationTurns(requestBody, history);
   const upstreamUrl = joinUpstreamUrl(route.baseUrl, "/chat/completions");
   logRoute(context, route, upstreamUrl);
   let messagesForHistory = converted.messagesForHistory;
@@ -402,7 +405,8 @@ export async function proxyChatCompletions(
     context,
   );
   logUsage(context, route, adjustedUpstream.usage);
-  const response = chatResponseToResponse(
+  let chatForHistory = adjustedUpstream;
+  let response = chatResponseToResponse(
     adjustedUpstream,
     requestBody.model || route.id,
     converted.toolContext,
@@ -411,16 +415,36 @@ export async function proxyChatCompletions(
       suppressInteractiveDiagnostics: Boolean(interactivePluginKindForRequest(requestBody)),
     },
   );
+  let localFallback = "";
+  if (shouldStopChatToolContinuation(response, route, toolContinuationTurns)) {
+    console.warn(
+      `[${new Date().toISOString()}] ${context.requestId || "req"} ` +
+        `!! tool-loop-guard route=${route.id} turns=${toolContinuationTurns} ` +
+        `max=${maxChatToolContinuationTurns(route)}`,
+    );
+    chatForHistory = localToolLoopGuardChat(route, toolContinuationTurns);
+    response = chatResponseToResponse(
+      chatForHistory,
+      requestBody.model || route.id,
+      converted.toolContext,
+      { stripReasoningTags: false },
+    );
+    localFallback = "tool_loop_guard";
+  }
 
   history.record(response.id, [
     ...messagesForHistory,
-    assistantHistoryMessageFromChat(adjustedUpstream),
+    assistantHistoryMessageFromChat(chatForHistory),
   ]);
   history.recordResponse(response, {
     api: "chat_completions",
     routeId: route.id || "",
     upstreamModel: route.model || "",
     upstreamKnown: false,
+    toolContinuationTurns: responseHasRunnableToolCall(response)
+      ? toolContinuationTurns
+      : 0,
+    ...(localFallback ? { localFallback } : {}),
   });
 
   if (converted.wantsStream) {
@@ -435,6 +459,72 @@ export async function proxyChatCompletions(
   }
 
   jsonResponse(res, 200, response);
+}
+
+function chatToolContinuationTurns(requestBody, history) {
+  if (!requestHasResponseToolOutput(requestBody)) {
+    return 0;
+  }
+  const previousMeta = history?.getResponseMeta?.(requestBody?.previous_response_id) || {};
+  const previousTurns = Number(previousMeta.toolContinuationTurns || 0);
+  return (Number.isFinite(previousTurns) && previousTurns > 0 ? previousTurns : 0) + 1;
+}
+
+function requestHasResponseToolOutput(requestBody = {}) {
+  return responseInputItems(requestBody.messages ?? requestBody.input).some(
+    isResponseToolOutputItem,
+  );
+}
+
+function responseInputItems(input) {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  return Array.isArray(input) ? input : [input];
+}
+
+function shouldStopChatToolContinuation(response, route, toolContinuationTurns) {
+  return (
+    toolContinuationTurns > maxChatToolContinuationTurns(route) &&
+    responseHasRunnableToolCall(response)
+  );
+}
+
+function maxChatToolContinuationTurns(route = {}) {
+  const value = Number(
+    route.maxToolContinuationTurns ?? route.max_tool_continuation_turns,
+  );
+  if (Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+  return DEFAULT_CHAT_TOOL_CONTINUATION_TURNS;
+}
+
+function responseHasRunnableToolCall(response) {
+  return Array.isArray(response?.output) && response.output.some(isResponseToolCallItem);
+}
+
+function localToolLoopGuardChat(route, toolContinuationTurns) {
+  const displayName = route.displayName || route.id || "the current model";
+  return {
+    id: `chatcmpl_tool_loop_guard_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+    object: "chat.completion",
+    choices: [
+      {
+        message: {
+          role: "assistant",
+          content:
+            `CodexBridge stopped repeated tool loop：已停止 ${displayName} 的重复工具调用。连续 ` +
+            `${toolContinuationTurns} 轮工具结果后，模型仍要求继续调用工具。` +
+            "最新工具结果已保留，但本轮不会再继续请求上游，避免重复调用和浪费 token。 " +
+            "请发送一个明确的下一步继续。",
+        },
+      },
+    ],
+    usage: null,
+  };
 }
 
 function enforceInteractivePluginBootstrap(upstream, requestBody, converted, context = {}) {

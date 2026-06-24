@@ -35,6 +35,10 @@ const TOOL_RESULT_CONTEXT_HEADER =
   "CodexBridge tool result context: these tool outputs are already completed historical results. " +
   "Do not repeat or re-run these tool calls just because they appear here. " +
   "Use the results as context, continue from the latest user request, and only call a new tool if a genuinely new step is still needed.";
+const TOOL_OUTPUT_CONTINUATION_GUIDANCE =
+  "CodexBridge tool continuation guidance: the latest user turn contains tool outputs that Codex has already executed. " +
+  "If those results satisfy the user's request, return a final concise answer now. " +
+  "Do not repeat the same command, restart the same task, or call another tool unless a clearly missing next step remains.";
 
 export function responsesToChatRequest(request, route, history) {
   const { messages: sourceMessages, toolContext } =
@@ -414,13 +418,29 @@ function toolGuidanceFromContext(toolContext, request = {}) {
     !chatNameForTool(toolContext, "mcp__node_repl__js");
   const needsCommandGuidance =
     names.some(isCommandToolName) && requestMentionsCommandWork(request);
+  const needsToolOutputContinuationGuidance =
+    Boolean(request?.previous_response_id) && requestHasResponseToolOutput(request);
   return [
     needsGuidance ? MCP_TOOL_GUIDANCE : "",
     needsInteractiveFallbackGuidance ? INTERACTIVE_CHAT_FALLBACK_GUIDANCE : "",
     needsCommandGuidance ? COMMAND_TOOL_GUIDANCE : "",
+    needsToolOutputContinuationGuidance ? TOOL_OUTPUT_CONTINUATION_GUIDANCE : "",
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function requestHasResponseToolOutput(request = {}) {
+  return chatRequestInputItems(request.messages ?? request.input).some(
+    isResponseToolOutputItem,
+  );
+}
+
+function chatRequestInputItems(input) {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  return Array.isArray(input) ? input : [input];
 }
 
 function isCommandToolName(name) {
