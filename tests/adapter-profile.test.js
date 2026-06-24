@@ -309,6 +309,30 @@ test("built-in preset providerId set matches shipped categories", () => {
   assert.deepEqual(BUILT_IN_PROVIDER_IDS, EXPECTED_PROVIDER_IDS);
 });
 
+test("built-in presets cover required provider categories", () => {
+  const categories = new Set(
+    MODEL_PRESETS.map((preset) =>
+      normalizeAdapterProfile({
+        ...preset,
+        id: preset.presetId,
+        provider: preset.providerId,
+      }).adapterId,
+    ),
+  );
+
+  for (const required of [
+    "responses-native",
+    "chat-deepseek",
+    "chat-kimi",
+    "chat-minimax",
+    "chat-doubao",
+    "chat-qwen",
+    "chat-openai-compatible",
+  ]) {
+    assert.equal(categories.has(required), true, `${required} missing`);
+  }
+});
+
 const MODEL_PRESETS_BY_PROVIDER_ID = new Map();
 for (const route of MODEL_PRESETS) {
   const routes = MODEL_PRESETS_BY_PROVIDER_ID.get(route.providerId) || [];

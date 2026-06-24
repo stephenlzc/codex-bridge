@@ -3792,6 +3792,71 @@ test("server filters unsupported chat params before chat completions upstream fe
   }
 });
 
+test("chat provider categories complete text requests without unsafe params", async () => {
+  for (const route of [
+    {
+      id: "deepseek-smoke",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      dropParams: ["response_format", "parallel_tool_calls"],
+    },
+    {
+      id: "kimi-smoke",
+      provider: "kimi",
+      model: "kimi-k2.7-code",
+      inputModalities: ["text", "image"],
+      dropParams: ["response_format", "parallel_tool_calls"],
+    },
+    {
+      id: "minimax-smoke",
+      provider: "minimax",
+      model: "MiniMax-M3",
+      dropParams: ["response_format", "parallel_tool_calls"],
+    },
+    {
+      id: "doubao-smoke",
+      provider: "volcengine",
+      model: "doubao-seed-1-8-251228",
+      dropParams: ["response_format", "parallel_tool_calls"],
+    },
+    {
+      id: "qwen-smoke",
+      provider: "qwen",
+      model: "qwen3-coder-plus",
+      dropParams: ["parallel_tool_calls"],
+    },
+    {
+      id: "generic-smoke",
+      provider: "openrouter",
+      model: "anthropic/claude-sonnet-4.5",
+      dropParams: ["parallel_tool_calls"],
+    },
+  ]) {
+    const { response, upstreamBody } = await exerciseChatRoute(route);
+    assert.equal(response.output_text, "smoke ok", route.id);
+    assert.equal(upstreamBody.parallel_tool_calls, undefined, route.id);
+    if (route.dropParams.includes("response_format")) {
+      assert.equal(upstreamBody.response_format, undefined, route.id);
+    } else {
+      assert.deepEqual(upstreamBody.response_format, { type: "json_object" }, route.id);
+    }
+  }
+});
+
+test("custom conservative chat route completes text and drops risky params", async () => {
+  const { response, upstreamBody } = await exerciseChatRoute({
+    id: "custom-smoke",
+    provider: "custom",
+    custom: true,
+    model: "custom-model",
+  });
+
+  assert.equal(response.output_text, "smoke ok");
+  assert.equal(upstreamBody.response_format, undefined);
+  assert.equal(upstreamBody.parallel_tool_calls, undefined);
+  assert.equal(upstreamBody.messages.at(-1).content, "smoke text");
+});
+
 test("streaming responses without object field are recorded for later chat-completions switches", async () => {
   const chatBodies = [];
   const upstream = http.createServer(async (req, res) => {
@@ -4312,6 +4377,76 @@ async function fetchJson(url, init) {
   const text = await response.text();
   assert.equal(response.ok, true, text);
   return JSON.parse(text);
+}
+
+async function exerciseChatRoute(routeOverrides = {}, requestOverrides = {}) {
+  let upstreamBody;
+  const upstream = http.createServer(async (req, res) => {
+    upstreamBody = await readJson(req);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: `chatcmpl_${routeOverrides.provider || "generic"}_smoke`,
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "smoke ok",
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 2,
+          total_tokens: 5,
+        },
+      }),
+    );
+  });
+
+  await listen(upstream);
+
+  const route = {
+    id: routeOverrides.id || "smoke-model",
+    provider: routeOverrides.provider || "custom",
+    displayName: routeOverrides.displayName || "Smoke Model",
+    api: "chat_completions",
+    baseUrl: `${serverUrl(upstream)}/v1`,
+    model: routeOverrides.model || "smoke-model",
+    apiKey: "upstream-key",
+    ...routeOverrides,
+  };
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: route.id,
+    models: [route],
+  });
+
+  await listen(router);
+
+  try {
+    const response = await fetchJson(`${serverUrl(router)}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: route.id,
+        input: "smoke text",
+        response_format: { type: "json_object" },
+        parallel_tool_calls: true,
+        ...requestOverrides,
+      }),
+    });
+    return { response, upstreamBody };
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
 }
 
 async function readJson(req) {
