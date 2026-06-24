@@ -87,6 +87,8 @@ test("custom chat routes default to conservative text-only behavior", () => {
 
   assert.equal(profile.adapterId, "custom-conservative");
   assert.equal(profile.customConservative, true);
+  assert.equal(profile.supportsTools, "none");
+  assert.equal(profile.supportsMcpNamespaces, false);
   assert.equal(profile.supportsImages, "none");
   assert.equal(profile.supportsFiles, "none");
   assert.deepEqual(profile.dropParams, ["parallel_tool_calls", "response_format"]);
@@ -148,7 +150,10 @@ test("custom model generated route remains conservative until image input is ena
 
   assert.equal(route.custom, true);
   assert.equal(route.providerFamily, "custom");
+  assert.deepEqual(route.inputModalities, ["text"]);
   assert.equal(profile.adapterId, "custom-conservative");
+  assert.equal(profile.supportsTools, "none");
+  assert.equal(profile.supportsMcpNamespaces, false);
   assert.equal(profile.supportsImages, "none");
   assert.ok(profile.dropParams.includes("response_format"));
   assert.ok(profile.dropParams.includes("parallel_tool_calls"));

@@ -68,7 +68,11 @@ export function normalizeAdapterProfile(route = {}) {
       route.catalogContextWindow,
       positiveNumber(route.contextWindow, 258400),
     ),
-    supportsTools: api === "responses" ? "native" : "chat-functions",
+    supportsTools: api === "responses"
+      ? "native"
+      : customConservative
+        ? "none"
+        : "chat-functions",
     supportsMcpNamespaces: api === "responses" || !customConservative,
     supportsImages,
     supportsFiles:

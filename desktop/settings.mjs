@@ -1947,7 +1947,7 @@ function modelWithDefaultCapabilities(model) {
   if (model.custom && model.inputModalities === undefined) {
     return {
       ...model,
-      inputModalities: normalizeInputModalities(model.inputModalities),
+      inputModalities: normalizeInputModalities(model.inputModalities, ["text"]),
     };
   }
   return model;
@@ -2026,7 +2026,7 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
     route.maxToolContinuationTurns = 2;
   }
   if (model.custom && route.inputModalities === undefined) {
-    route.inputModalities = normalizeInputModalities(model.inputModalities);
+    route.inputModalities = normalizeInputModalities(model.inputModalities, ["text"]);
   }
   if (model.custom && route.api === "chat_completions") {
     const drops = Array.isArray(route.dropParams) ? route.dropParams : [];
@@ -2168,7 +2168,7 @@ function normalizeCustomModel(input = {}) {
     keyUrl: String(input.keyUrl || "").trim(),
     docsUrl: String(input.docsUrl || "").trim(),
     contextWindow: Number(input.contextWindow || 258400),
-    inputModalities: normalizeInputModalities(input.inputModalities),
+    inputModalities: normalizeInputModalities(input.inputModalities, ["text"]),
     dropParams:
       input.api === "responses" ? undefined : ["response_format", "parallel_tool_calls"],
     custom: true,
@@ -2198,8 +2198,8 @@ function slugifyEnv(value) {
     .slice(0, 48) || "CUSTOM";
 }
 
-function normalizeInputModalities(value) {
-  const requested = Array.isArray(value) && value.length ? value : ["text", "image"];
+function normalizeInputModalities(value, defaultModalities = ["text", "image"]) {
+  const requested = Array.isArray(value) && value.length ? value : defaultModalities;
   const normalized = [];
   for (const modality of requested) {
     if (!["text", "image"].includes(modality) || normalized.includes(modality)) {

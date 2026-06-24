@@ -544,6 +544,24 @@ test("custom models can be saved and routed with their own API key env", () => {
   assert.equal(config.models[0].id, "gpt-5.5");
   assert.equal(config.models[0].displayName, "My Coder");
   assert.equal(config.models[0].apiKeyEnv, "MY_PROVIDER_API_KEY");
+  assert.deepEqual(config.models[0].inputModalities, ["text"]);
+});
+
+test("custom models preserve explicit image input when saved and routed", () => {
+  const rootDir = makeTempProject();
+  const custom = saveCustomModel(rootDir, {
+    providerName: "Image Provider",
+    displayName: "Image Coder",
+    model: "image-coder-v1",
+    baseUrl: "https://api.example.com/v1",
+    api: "chat_completions",
+    inputModalities: ["text", "image"],
+  });
+  saveSelection(rootDir, [custom.presetId]);
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.deepEqual(custom.inputModalities, ["text", "image"]);
   assert.deepEqual(config.models[0].inputModalities, ["text", "image"]);
 });
 
@@ -681,7 +699,7 @@ test("editing a custom model preserves its existing API key slot", () => {
   assert.equal(edited.apiKeyEnv, custom.apiKeyEnv);
 });
 
-test("legacy custom models without saved modalities default to image input", () => {
+test("legacy custom models without saved modalities default to text-only input", () => {
   const rootDir = makeTempProject();
   fs.mkdirSync(path.join(rootDir, "config"), { recursive: true });
   fs.writeFileSync(
@@ -707,7 +725,7 @@ test("legacy custom models without saved modalities default to image input", () 
 
   const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
 
-  assert.deepEqual(config.models[0].inputModalities, ["text", "image"]);
+  assert.deepEqual(config.models[0].inputModalities, ["text"]);
 });
 
 test("ensureRouterConfig copies the selected example", () => {
