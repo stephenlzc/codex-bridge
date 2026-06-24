@@ -94,6 +94,26 @@ test("custom chat routes default to conservative text-only behavior", () => {
   assert.deepEqual(profile.dropParams, ["parallel_tool_calls", "response_format"]);
 });
 
+test("custom chat routes preserve explicit image input in the adapter profile", () => {
+  const profile = normalizeAdapterProfile({
+    id: "custom-model",
+    custom: true,
+    provider: "custom",
+    api: "chat_completions",
+    model: "custom-model",
+    baseUrl: "https://example.invalid/v1",
+    contextWindow: 258400,
+    inputModalities: ["text", "image"],
+  });
+
+  assert.equal(profile.customConservative, true);
+  assert.equal(profile.supportsImages, "chat-image-url");
+  assert.equal(profile.supportsTools, "none");
+  assert.equal(profile.supportsMcpNamespaces, false);
+  assert.equal(profile.supportsFiles, "none");
+  assert.deepEqual(profile.dropParams, ["parallel_tool_calls", "response_format"]);
+});
+
 test("every built-in preset has an adapter profile", () => {
   const missing = [];
   for (const preset of MODEL_PRESETS) {

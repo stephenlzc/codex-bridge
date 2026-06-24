@@ -164,7 +164,7 @@ function imageSupportForRoute(route, api, inputModalities, customConservative) {
   if (api === "responses") {
     return "native";
   }
-  return customConservative ? "none" : "chat-image-url";
+  return "chat-image-url";
 }
 
 function normalizedDropParams(route, api, customConservative) {
