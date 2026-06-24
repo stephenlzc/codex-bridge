@@ -658,12 +658,19 @@ test("chat conversion keeps orphan tool output as internal context, not a user t
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.messages.length, 1);
-  assert.equal(converted.body.messages[0].role, "system");
-  assert.match(converted.body.messages[0].content, /CodexBridge tool result context/);
-  assert.match(converted.body.messages[0].content, /Do not repeat or re-run/);
-  assert.match(converted.body.messages[0].content, /call_missing/);
-  assert.match(converted.body.messages[0].content, /tool result that must not disappear/);
+  const transcript = converted.body.messages
+    .map((message) => String(message.content || ""))
+    .join("\n");
+  assert.match(transcript, /CodexBridge tool continuation guidance/);
+
+  const resultMessages = converted.body.messages.filter((message) =>
+    String(message.content || "").includes("CodexBridge tool result context"),
+  );
+  assert.equal(resultMessages.length, 1);
+  assert.equal(resultMessages[0].role, "system");
+  assert.match(resultMessages[0].content, /Do not repeat or re-run/);
+  assert.match(resultMessages[0].content, /call_missing/);
+  assert.match(resultMessages[0].content, /tool result that must not disappear/);
 });
 
 test("chat conversion drops stale assistant tool calls without tool outputs", () => {

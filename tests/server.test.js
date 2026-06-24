@@ -314,6 +314,162 @@ test("server stops runaway chat tool loops after repeated tool continuations", a
   }
 });
 
+test("server stops chat tool loops when Codex sends full input without previous_response_id", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    upstreamCalls += 1;
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: `chatcmpl_no_prev_loop_${upstreamCalls}`,
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "I will keep using tools without previous_response_id.",
+              tool_calls: [
+                {
+                  id: `call_no_prev_loop_${upstreamCalls}`,
+                  type: "function",
+                  function: {
+                    name: "shell_command",
+                    arguments: JSON.stringify({
+                      command: `echo no-prev-loop ${upstreamCalls}`,
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 200 + upstreamCalls,
+          completion_tokens: 10,
+          total_tokens: 210 + upstreamCalls,
+        },
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    models: [
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+        maxToolContinuationTurns: 1,
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+  const tools = [
+    {
+      type: "function",
+      name: "shell_command",
+      description: "Run shell.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string" },
+        },
+        required: ["command"],
+      },
+    },
+  ];
+  const originalUserInput = "create a file, write a joke, then delete it";
+
+  try {
+    const first = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: originalUserInput,
+        tools,
+      }),
+    });
+    const firstCall = first.output.find((item) => item.type === "function_call");
+    assert.ok(firstCall);
+
+    const second = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: [
+          originalUserInput,
+          firstCall,
+          {
+            type: "function_call_output",
+            call_id: firstCall.call_id,
+            output: "created file",
+          },
+        ],
+        tools,
+      }),
+    });
+    const secondCall = second.output.find((item) => item.type === "function_call");
+    assert.ok(secondCall);
+
+    const third = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        input: [
+          originalUserInput,
+          firstCall,
+          {
+            type: "function_call_output",
+            call_id: firstCall.call_id,
+            output: "created file",
+          },
+          secondCall,
+          {
+            type: "function_call_output",
+            call_id: secondCall.call_id,
+            output: "wrote joke",
+          },
+        ],
+        tools,
+      }),
+    });
+
+    assert.equal(
+      third.output.some((item) => item.type === "function_call"),
+      false,
+    );
+    assert.match(third.output_text, /stopped.*tool loop/i);
+    assert.equal(upstreamCalls, 3);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("server suppresses unexpected Node REPL tool calls from chat providers", async () => {
   const chatBodies = [];
   const upstream = http.createServer(async (req, res) => {

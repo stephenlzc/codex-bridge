@@ -418,8 +418,7 @@ function toolGuidanceFromContext(toolContext, request = {}) {
     !chatNameForTool(toolContext, "mcp__node_repl__js");
   const needsCommandGuidance =
     names.some(isCommandToolName) && requestMentionsCommandWork(request);
-  const needsToolOutputContinuationGuidance =
-    Boolean(request?.previous_response_id) && requestHasResponseToolOutput(request);
+  const needsToolOutputContinuationGuidance = requestHasResponseToolOutput(request);
   return [
     needsGuidance ? MCP_TOOL_GUIDANCE : "",
     needsInteractiveFallbackGuidance ? INTERACTIVE_CHAT_FALLBACK_GUIDANCE : "",
