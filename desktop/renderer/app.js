@@ -234,13 +234,19 @@ function render() {
 
 function renderHealthStatus() {
   const health = state.lastHealth;
+  const isStarting = Boolean(health?.starting);
   els.healthStatus.classList.toggle("ok", Boolean(health?.ok));
-  els.healthStatus.classList.toggle("bad", Boolean(health && !health.ok));
+  els.healthStatus.classList.toggle("bad", Boolean(health && !health.ok && !isStarting));
+  els.healthStatus.classList.toggle("starting", isStarting);
   if (!health) {
     els.healthStatus.textContent = "Router 健康检查：尚未检查";
     return;
   }
   const checkedAt = health.checkedAt ? ` · ${formatTime(health.checkedAt)}` : "";
+  if (isStarting) {
+    els.healthStatus.textContent = `Router 正在启动，等待健康检查${checkedAt}`;
+    return;
+  }
   els.healthStatus.textContent = health.ok
     ? `Router 健康检查通过：${health.models?.length || 0} 个模型已加载${checkedAt}`
     : `Router 健康检查失败：${health.message || "未知错误"}${checkedAt}`;

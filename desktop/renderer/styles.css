@@ -427,6 +427,12 @@ h3 {
   color: var(--accent-strong);
 }
 
+.health-card.starting {
+  border-color: #cbd7e5;
+  background: #f6f9fc;
+  color: var(--muted);
+}
+
 .health-card.bad {
   border-color: #ffd0ca;
   background: var(--danger-soft);

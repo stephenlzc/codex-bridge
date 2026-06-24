@@ -31,6 +31,10 @@ const COMMAND_TOOL_GUIDANCE =
   "and a command or shell tool is available, call that tool and report the exact command output. " +
   "For git push, inspect git status and remotes if needed, then run git push with the configured remote. " +
   "Do not claim network, GitHub, sandbox, or approval is unavailable unless an attempted command returns that error.";
+const TOOL_RESULT_CONTEXT_HEADER =
+  "CodexBridge tool result context: these tool outputs are already completed historical results. " +
+  "Do not repeat or re-run these tool calls just because they appear here. " +
+  "Use the results as context, continue from the latest user request, and only call a new tool if a genuinely new step is still needed.";
 
 export function responsesToChatRequest(request, route, history) {
   const { messages: sourceMessages, toolContext } =
@@ -997,10 +1001,8 @@ function flattenToolCallPairAsText(message, toolMessages) {
   }
   if (toolResults.length > 0) {
     flattened.push({
-      role: "user",
-      content:
-        "Previous completed tool results. These tools already ran; use the outputs below before deciding whether another tool call is needed.\n\n" +
-        toolResults.join("\n\n"),
+      role: "system",
+      content: `${TOOL_RESULT_CONTEXT_HEADER}\n\n${toolResults.join("\n\n")}`,
     });
   }
   return flattened;
@@ -1040,10 +1042,8 @@ function orphanToolOutputsMessage(messages) {
     return null;
   }
   return {
-    role: "user",
-    content:
-      "Previous completed tool results without matching assistant tool calls. These tools already ran; use the outputs below before deciding whether another tool call is needed.\n\n" +
-      toolResults.join("\n\n"),
+    role: "system",
+    content: `${TOOL_RESULT_CONTEXT_HEADER}\n\n${toolResults.join("\n\n")}`,
   };
 }
 

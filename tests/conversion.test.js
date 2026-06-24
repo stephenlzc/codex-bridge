@@ -631,7 +631,7 @@ test("Gemini chat conversion flattens prior tool calls because thought signature
   assert.equal(converted.body.tools.length, 1);
 });
 
-test("chat conversion keeps orphan tool output visible as user text", () => {
+test("chat conversion keeps orphan tool output as internal context, not a user task", () => {
   const converted = responsesToChatRequest(
     {
       model: "deepseek-v4-pro",
@@ -659,7 +659,9 @@ test("chat conversion keeps orphan tool output visible as user text", () => {
   );
 
   assert.equal(converted.body.messages.length, 1);
-  assert.equal(converted.body.messages[0].role, "user");
+  assert.equal(converted.body.messages[0].role, "system");
+  assert.match(converted.body.messages[0].content, /CodexBridge tool result context/);
+  assert.match(converted.body.messages[0].content, /Do not repeat or re-run/);
   assert.match(converted.body.messages[0].content, /call_missing/);
   assert.match(converted.body.messages[0].content, /tool result that must not disappear/);
 });
@@ -978,9 +980,11 @@ test("DeepSeek groups flattened multi-tool outputs into one continuation message
   );
 
   const resultMessages = converted.body.messages.filter((message) =>
-    String(message.content || "").includes("Previous completed tool results"),
+    String(message.content || "").includes("CodexBridge tool result context"),
   );
   assert.equal(resultMessages.length, 1);
+  assert.equal(resultMessages[0].role, "system");
+  assert.match(resultMessages[0].content, /Do not repeat or re-run/);
   assert.match(resultMessages[0].content, /call_script/);
   assert.match(resultMessages[0].content, /install script content/);
   assert.match(resultMessages[0].content, /call_log/);
@@ -1021,11 +1025,11 @@ test("chat routes group consecutive orphan tool outputs into one continuation me
   );
 
   const resultMessages = converted.body.messages.filter((message) =>
-    String(message.content || "").includes(
-      "Previous completed tool results without matching assistant tool calls",
-    ),
+    String(message.content || "").includes("CodexBridge tool result context"),
   );
   assert.equal(resultMessages.length, 1);
+  assert.equal(resultMessages[0].role, "system");
+  assert.match(resultMessages[0].content, /Do not repeat or re-run/);
   assert.match(resultMessages[0].content, /call_file/);
   assert.match(resultMessages[0].content, /created test file/);
   assert.match(resultMessages[0].content, /call_delete/);
@@ -1129,6 +1133,30 @@ test("chat provider replies do not expose orphan tool-output compatibility summa
   assert.equal(response.output_text, "");
   assert.equal(response.output.length, 0);
   assert.doesNotMatch(JSON.stringify(response), /Previous completed tool results/);
+  assert.doesNotMatch(JSON.stringify(response), /created test file/);
+});
+
+test("chat provider replies do not expose tool-result context summaries", () => {
+  const response = chatResponseToResponse(
+    {
+      id: "chatcmpl_tool_result_context",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content:
+              "CodexBridge tool result context: these tool outputs are already completed historical results. Do not repeat or re-run these tool calls just because they appear here.\n\nResult call_file:\ncreated test file",
+          },
+        },
+      ],
+    },
+    "deepseek-v4-pro",
+    { chatToolNames: new Set(["shell_command"]) },
+  );
+
+  assert.equal(response.output_text, "");
+  assert.equal(response.output.length, 0);
+  assert.doesNotMatch(JSON.stringify(response), /CodexBridge tool result context/);
   assert.doesNotMatch(JSON.stringify(response), /created test file/);
 });
 
