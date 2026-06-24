@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MODEL_PRESETS } from "../desktop/presets.mjs";
+import {
+  buildRouterConfigFromSelection,
+  saveCustomModel,
+  saveSelection,
+} from "../desktop/settings.mjs";
 import {
   adapterIdForRoute,
   filterPayloadForAdapter,
@@ -82,6 +90,68 @@ test("custom chat routes default to conservative text-only behavior", () => {
   assert.equal(profile.supportsImages, "none");
   assert.equal(profile.supportsFiles, "none");
   assert.deepEqual(profile.dropParams, ["parallel_tool_calls", "response_format"]);
+});
+
+test("every built-in preset has an adapter profile", () => {
+  const missing = [];
+  for (const preset of MODEL_PRESETS) {
+    const profile = normalizeAdapterProfile({
+      ...preset,
+      provider: preset.providerId,
+      id: preset.presetId,
+    });
+    if (!profile.adapterId || !profile.providerFamily || !profile.safeParams.length) {
+      missing.push(preset.presetId);
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test("all generated selected routes preserve provider identity for adapter profiles", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "codexbridge-adapter-routes-"));
+  saveSelection(rootDir, [
+    "codex-gpt-5-5",
+    "deepseek-v4-pro",
+    "kimi-k2-7-code",
+    "minimax-m3",
+    "doubao-seed-1-8",
+  ]);
+
+  const config = buildRouterConfigFromSelection(rootDir, "hybrid");
+  const routesWithoutProvider = config.models
+    .filter((route) => !route.provider)
+    .map((route) => route.id);
+
+  assert.deepEqual(routesWithoutProvider, []);
+  for (const route of config.models) {
+    const profile = normalizeAdapterProfile(route);
+    assert.equal(route.providerFamily, profile.providerFamily, route.id);
+    assert.ok(profile.adapterId, route.id);
+  }
+});
+
+test("custom model generated route remains conservative until image input is enabled", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "codexbridge-custom-profile-"));
+  const custom = saveCustomModel(rootDir, {
+    providerId: "custom",
+    displayName: "My Custom Chat",
+    baseUrl: "https://example.invalid/v1",
+    model: "my-custom-chat",
+    api: "chat_completions",
+    apiKeyEnv: "CUSTOM_API_KEY",
+  });
+  saveSelection(rootDir, [custom.presetId]);
+
+  const config = buildRouterConfigFromSelection(rootDir, "hybrid");
+  const route = config.models[0];
+  const profile = normalizeAdapterProfile(route);
+
+  assert.equal(route.custom, true);
+  assert.equal(route.providerFamily, "custom");
+  assert.equal(profile.adapterId, "custom-conservative");
+  assert.equal(profile.supportsImages, "none");
+  assert.ok(profile.dropParams.includes("response_format"));
+  assert.ok(profile.dropParams.includes("parallel_tool_calls"));
 });
 
 const BUILT_IN_PROVIDER_CONTRACTS = {

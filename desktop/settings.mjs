@@ -1982,6 +1982,8 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
     slotLabel: slot.label,
     sourcePresetId: model.presetId,
     provider: model.providerId,
+    providerFamily: model.providerFamily || providerFamilyForRoute(model, provider),
+    custom: Boolean(model.custom),
     displayName: model.displayName,
     description: model.description || `${model.displayName} via ${provider?.name || model.providerName || model.providerId}.`,
     api: model.api,
@@ -2000,6 +2002,13 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
     "tpm",
     "dropParams",
     "inputModalities",
+    "providerFamily",
+    "supportsPromptCaching",
+    "supportsTools",
+    "supportsImages",
+    "supportsFiles",
+    "supportsMcpNamespaces",
+    "supportsResponsePreviousId",
     "defaultReasoningLevel",
     "supportedReasoningLevels",
     "additionalSpeedTiers",
@@ -2019,7 +2028,46 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
   if (model.custom && route.inputModalities === undefined) {
     route.inputModalities = normalizeInputModalities(model.inputModalities);
   }
+  if (model.custom && route.api === "chat_completions") {
+    const drops = Array.isArray(route.dropParams) ? route.dropParams : [];
+    route.dropParams = [...new Set([...drops, "parallel_tool_calls", "response_format"])];
+  }
   return route;
+}
+
+function providerFamilyForRoute(model = {}, provider) {
+  if (model.providerFamily) {
+    return model.providerFamily;
+  }
+  const providerId = String(model.providerId || model.provider || provider?.id || "").toLowerCase();
+  if (providerId === "codex" || providerId === "openai") {
+    return "openai";
+  }
+  if (providerId === "deepseek") {
+    return "deepseek";
+  }
+  if (providerId === "kimi" || providerId === "moonshot") {
+    return "kimi";
+  }
+  if (providerId === "minimax") {
+    return "minimax";
+  }
+  if (providerId === "volcengine") {
+    return "doubao";
+  }
+  if (providerId === "qwen") {
+    return "qwen";
+  }
+  if (providerId === "qianfan") {
+    return "baidu";
+  }
+  if (providerId === "xiaomi" || providerId === "stepfun" || providerId === "hunyuan" || providerId === "zhipu" || providerId === "openrouter" || providerId === "siliconflow") {
+    return "openai-compatible";
+  }
+  if (Boolean(model.custom) || String(model.providerName || provider?.name || "").toLowerCase().includes("custom")) {
+    return "custom";
+  }
+  return "openai-compatible";
 }
 
 function imageGenerationForModel(model = {}, override) {
