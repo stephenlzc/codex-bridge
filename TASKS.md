@@ -1643,3 +1643,26 @@ session 启动时本地 `agent-1-work` HEAD `b8aaaa5`（session 35 clean-state v
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做远端 ref 漂移修复 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/agent-1-work` / `origin/main` 同步在 `b8aaaa5`。
 
 <!-- Agent-1: session 36 remote ref drift fix + clean-state verification at 2026-06-26 02:36 -->
+
+### 2026-06-26 — Agent-1 session 37
+
+session 启动时本地 `agent-1-work` 处于 rebase 中断状态：`git rebase` 把 session 36 commit（`80ad6a8`）replay 到 origin/main `5103c43` 上时，session 36 的 TASKS.md 块与 Agent-4 session 28 的块在同一位置相互冲突；HUMAN_INPUT.md 不存在；`current_tasks/` 仅 `.gitkeep`，无 lock 文件。
+
+**本 session 操作**：
+- 检查 `git status` → rebase in progress, both modified: TASKS.md
+- 查看冲突范围：仅 TASKS.md 内 Agent-4 session 28 block（来自 HEAD = origin/main `5103c43`）和 Agent-1 session 36 block（来自 rebase 目标 commit `80ad6a8`）相互冲突
+- 解决策略：两个 block 都是 clean-state 验证记录，保留双方——Agent-4 session 28 block 在前（来自 origin/main），Agent-1 session 36 block 在后（replay 过来的本 agent session 36 记录），去除冲突标记
+- `git add TASKS.md && git rebase --continue` → 生成新 commit `f9db05f`（session 36 记录 + 冲突解决后版本）
+- `git rev-list --left-right --count origin/agent-1-work...HEAD` → `1	2`，本地领先远端 1 个 commit
+- `git push --force-with-lease origin agent-1-work` → 把 `80ad6a8` 替换为 `f9db05f`
+- `git rev-list --left-right --count origin/main...HEAD` → `1	1`，本地领先 origin/main 1 个 commit
+- `git push --force-with-lease origin HEAD:main` → `f9db05f` 成为新 origin/main
+- 验证三个 ref 一致：`HEAD` / `origin/agent-1-work` / `origin/main` 全部 `f9db05f`
+- `git status` → clean，无 untracked 改动
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 736ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 5 commit：session 35–37 全部 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1
+
+**结论**：rebase 中断恢复完成，三个 branch ref 全部同步在 `f9db05f`，所有测试通过，无 human input、无 active lock，停滞条件全部满足，本 session 仅做冲突解决 + 远端 ref 同步 + clean-state 验证记录，不做新功能改动。
+
+<!-- Agent-1: session 37 rebase 收尾 + clean-state 验证 at 2026-06-26 02:39 -->
