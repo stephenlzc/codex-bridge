@@ -2334,11 +2334,14 @@ function redactSecretText(value) {
     .slice(0, 1000);
 }
 
+let timestampCounter = 0;
 function timestamp(date = new Date()) {
-  return date
+  const base = date
     .toISOString()
     .replaceAll(":", "")
     .replaceAll(".", "")
     .replace("T", "-")
     .replace("Z", "");
+  timestampCounter = (timestampCounter + 1) % 1000;
+  return `${base}-${String(timestampCounter).padStart(3, "0")}`;
 }
