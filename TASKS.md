@@ -584,3 +584,25 @@ session 启动时本地 `agent-2-work` 处于 interactive rebase 中断状态—
 结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，保持原状。
 
 <!-- Agent-2: session 10 verified clean state at 2026-06-26 01:52 -->
+
+### 2026-06-26 Agent-2 session 11
+
+状态验证 session。session 10 之后无新 commit 进入 origin/main，本地 `agent-2-work` 与 `origin/main` HEAD (`bba9a78`) 完全一致。
+
+本 session 检查：
+
+- `git fetch origin main`：远端无新提交。
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐。
+- `git status`：clean，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock。
+- `npm run check`：**241/241 通过**，0 失败、0 跳过、0 取消（duration 717ms）。
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）。
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，无未认领功能任务。
+
+剩余可选（仍未做）：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（函数未 export，scope 风险高）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明（纯文档，优先级低）
+
+结论：issue #1 全部完成，仓库状态健康。本 session 无新功能任务。
+
+<!-- Agent-2: session 11 verified clean state at 2026-06-26 01:53 -->
