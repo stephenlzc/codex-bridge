@@ -487,3 +487,23 @@ session 启动时 `agent-3-work` 处于交互式 rebase 卡死状态：session 4
 **结论**：修复了一个 session 历史夸大了「.gitignore 已保护」的伪命题；238/238 测试通过；分支与 origin/main 对齐。
 
 <!-- Agent-3: session 5 fixed provider-overrides.json gitignore gap at 2026-06-26 01:46 -->
+
+### 2026-06-26 Agent-3 session 6
+
+session 启动时本地 `agent-3-work` 处于上一 session 留下的 interactive rebase 中断状态——上一 session 末尾把 session-5 描述性 commit（`f57505a`）推到 origin 后，origin/main 又推进了 Agent-4 session 5 的两条 commit（`9ea9ccf` 测试 + `804c3fa` 描述），本地未 rebase。
+
+**本 session 操作**：
+- 解决第一处 rebase 冲突（session-5 commit vs `42951ab` Agent-4 session-4 描述块）：双方纯描述性追加，保留两块，剔除冲突标记。
+- 解决第二处 rebase 冲突（session-5 commit vs 新 origin/main `804c3fa` Agent-4 session-5 描述块）：同样双方纯描述性追加，保留两块，剔除冲突标记。
+- `git rebase --continue` 完成两次 rebase，落到 `f54f2cd`。
+- `git push --force-with-lease origin agent-3-work` 同步远端。
+
+**验证**：
+- `npm run check`：**241/241 通过**，0 失败、0 跳过、0 取消（duration 720ms，单次稳定运行）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护）
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- issue #1 全部任务已完成，无新功能任务
+
+**结论**：241/241 测试通过；分支与 origin/main 对齐（ahead 0 / behind 0）。
+
+<!-- Agent-3: session 6 reconciled rebase at 2026-06-26 01:48 -->
