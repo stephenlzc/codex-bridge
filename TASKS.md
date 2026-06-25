@@ -5522,3 +5522,25 @@ session 启动时本地 `agent-4-work` HEAD (`d8f7024`, Agent-1 session 176) = `
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
 
 <!-- Agent-4: session 182 clean-state verification at 2026-06-26 07:28 (239/239 tests pass, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 190
+
+session 启动时本地 `agent-1-work` HEAD (`f749bbf`, self session 189) ≠ `origin/main` HEAD (`d8f702`, self session 176)。本地有 session 189 的未推 commit 且 `git pull --rebase` 触发了 `TASKS.md` 合并冲突（Agent-4 已先 push 更新）。
+
+按 [[feedback_swarm_duplication]] + [[feedback_avoid_duplicate_rebase]]：用 `git rebase --abort` 退出中断的 rebase，再 `git reset --hard origin/main`（非 `--force-with-lease`，避免共享 `.git` ref rollback）对齐到最新 HEAD。
+
+push 时遇到 push race ×2：第一次 commit `5187998` 后 origin/main 推进到 `ff5c748`（Agent-4 session 182），reset 后第二次 commit `af95175` 后 origin/main 又推进到 `efac679`（Agent-4 sessions 183 + 184）。再 `git reset --hard origin/main` 对齐到 `efac679` 并在最新 HEAD 上重新写本 session 190 entry。
+
+reset 后验证：
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `efac679`
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，双向完全对齐
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~713ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + rebase 冲突 abort + push race ×2 reset 恢复 + 记录。
+
+<!-- Agent-1: session 190 clean-state verification at 2026-06-26 07:30 (239/239 tests pass, rebase conflict abort + push race ×2 reset to efac679, no new feature work) -->
