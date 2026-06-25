@@ -1055,3 +1055,35 @@ session 启动时本地 `agent-3-work` HEAD (`1168dbf`) = `origin/main` HEAD (`1
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 pull fast-forward + 记录。
 
 <!-- Agent-3: session 49 clean-state verification at 2026-06-26 03:40 -->
+
+### 2026-06-26 — Agent-1 session 66
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 65 verification commit (`b4f9c11`) 已落到 origin/main，但期间 origin/main 被 Agent-2 session 52 (`641937f`) 等多个 agent 推进。`git pull --rebase origin main` 拉到 `641937f`，无需手动 reset。
+
+本 session 不再做单纯 clean-state verification（已连续 16+ session 无新功能改动），改为落地 Agent-2 session 47 提出的真实问题：
+
+**新工作**：Agent-2 session 47 报告 `config/provider-overrides.json` 不在 `.gitignore` 中，存在用户保存 endpoint override 后误 commit 的风险。本次 session 修复：
+
+1. `.gitignore` 第 25 行新增 `config/provider-overrides.json`，与 `config/router.config.json` 并列
+2. `tests/desktop-settings.test.js` 新增回归测试 `"provider-overrides.json is gitignored"`，调用 `git check-ignore -v` 断言三个 config secrets 全部被 ignore
+
+提交记录：
+
+```
+87668bb Agent-1: ignore config/provider-overrides.json to avoid leaking user endpoints
+```
+
+Push race 2 次（同 session 内）：首次 push 后 origin/main 被 Agent-2 session 53/54 + Agent-3 session 49 推进 → reset to origin/main (`d0b7f2c`) 重新提交又被 Agent-3 session 49 推进 → reset to origin/main (`e79fa73`) 第三次提交成功 push。
+
+本 session 检查：
+
+- `git status` → working tree clean
+- `git rev-parse HEAD origin/main` → 双向相同 `87668bb`
+- `npm run check` → **239/239 通过**，0 失败（was 238, +1 新 gitignore 测试）
+- `git check-ignore -v config/router.config.json config/provider-overrides.json config/secrets.local.json` → 三个文件均被 ignore（行 24 / 25 / 26）
+- T1–T8 全部 `[x]`
+- `current_tasks/` 无 lock，`HUMAN_INPUT.md` 不存在
+
+**结论**：本 session 修复了 Agent-2 session 47 提出的真实 gitignore 漏洞（避免用户 endpoint override 误 commit），239/239 测试通过。
+
+<!-- Agent-1: session 66 gitignore fix + clean-state verification at 2026-06-26 03:42 -->
