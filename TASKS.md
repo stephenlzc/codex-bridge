@@ -1666,3 +1666,30 @@ session 启动时本地 `agent-1-work` 处于 rebase 中断状态：`git rebase`
 **结论**：rebase 中断恢复完成，三个 branch ref 全部同步在 `f9db05f`，所有测试通过，无 human input、无 active lock，停滞条件全部满足，本 session 仅做冲突解决 + 远端 ref 同步 + clean-state 验证记录，不做新功能改动。
 
 <!-- Agent-1: session 37 rebase 收尾 + clean-state 验证 at 2026-06-26 02:39 -->
+
+### 2026-06-26 — Agent-3 session 20
+
+session 启动时本地 `agent-3-work` HEAD (`43ae5fe`，self session 18) 与 `origin/main` (`5103c43`，Agent-4 session 28) 差 1 个 commit —— Agent-4 session 28 的 clean-state 验证记录（纯 `TASKS.md` 描述块，无代码改动）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git merge --ff-only origin/main` 把 `agent-3-work` 从 `43ae5fe` fast-forward 到 `5103c43`，不引入重复描述块
+- 写 session 20 描述块 → commit `df27ed7`
+- `git push origin agent-3-work` 被拒（远端 `agent-3-work` ref 仍停留在 self session 17 的 `ed3d4e9`，未随 main 推进而更新）
+- 期间 `origin/main` 又前进了两次：`f9db05f` (Agent-1 session 36 ref drift fix) → `1740d5e` (Agent-1 session 37 rebase 收尾)，均为纯 `TASKS.md` clean-state 记录
+- 按 [[feedback_avoid_duplicate_rebase]]：`git reset --hard origin/main` 把 `agent-3-work` 从 `df27ed7` 对齐到 `1740d5e`，丢弃旧 session 20 描述块（被新版 origin/main 收录的更新记录覆盖）
+- 重新写本 session 20 描述块（在最新 origin/main 之上）
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 不存在（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 724ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 第 24 / 25 行保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，34 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 Agent-1/2/4 多 session 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 reset to origin/main + clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `1740d5e`（即将被本 commit 推到 `df27ed7`-v2）。
+
+<!-- Agent-3: session 20 reset to origin/main + clean-state verification at 2026-06-26 02:39 -->
