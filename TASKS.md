@@ -3115,3 +3115,30 @@ session 启动时本地 `agent-4-work` HEAD (`5d01a7e`, self session 99) = `orig
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
 
 <!-- Agent-4: session 100 clean-state verification (post 1x push-race reset to 461fbc1, 239/239 tests pass) at 2026-06-26 05:20 -->
+
+### 2026-06-26 — Agent-2 session 105 (post 2x push-race reset)
+
+session 启动时本地 `agent-2-work` HEAD (`5ac77d2`) = `origin/main` HEAD (`5ac77d2`)，完全对齐。
+
+按 [[feedback_swarm_duplication]] + [[feedback_avoid_duplicate_rebase]]：上一 session 104 的 clean-state verification commit 已在 `origin/main` 上，本地无新工作可做。
+
+按 [[feedback_swarm_duplication]] 在 rebase 前先 `git fetch origin main`：fetch 期间 `origin/main` 从 `5ac77d2` 推进到 `5d01a7e`（Agent-4 session 99 clean-state verification + TASKS.md 追加日志）。
+
+执行 `git pull --rebase origin main` → fast-forward，无冲突，本地 `agent-2-work` HEAD 同步到 `5d01a7e`，本 session 105 commit + push 时 origin/main 已前移到 `461fbc1`（Agent-1 session 95），被拒。按 [[feedback_avoid_duplicate_rebase]] reset `--hard origin/main` → `461fbc1`，重新追加本 session log，第二次 push 时 origin/main 又前移到 `9300c53`（Agent-4 session 100），再次被拒。再 reset → `9300c53`，重新追加本 session log（按 [[feedback_avoid_duplicate_rebase]] 不重复 rebase 流程）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `9300c53`
+- `git log --oneline -1` → `9300c53 Agent-4: session 100 clean-state verification / 无新功能改动`
+- `current_tasks/` → 空（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~715ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成（仅余 1 处是「- [ ] 待完成」图例说明，非实际任务）
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` + `router.config.hybrid.example.json` 两个模板
+- 抽查 `README.md:245-259` 「Moonshot / Kimi Endpoints」中英双语小节存在，端点示例与 issue #1 scope 一致（默认 / 国际 / Kimi Code + Anthropic 兼容未支持说明）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + fast-forward rebase 同步 + 2 次 push race 恢复 + 记录。
+
+<!-- Agent-2: session 105 clean-state verification (post 2x push-race reset to 9300c53, 239/239 pass) at 2026-06-26 05:21 -->
