@@ -1871,3 +1871,31 @@ session 启动时本地 `agent-4-work` HEAD (`3dbabd4`) = `origin/main` HEAD (`3
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，添加 session 41 clean-state 验证记录。
 
 <!-- Agent-4: session 41 clean-state verification at 2026-06-26 02:52 -->
+
+### 2026-06-26 — Agent-2 session 24
+
+session 启动时本地 `agent-2-work` HEAD (`b3c1ef1`) 与 `origin/main` HEAD 完全一致，working tree clean。
+
+本 session 检查：
+
+- `git fetch origin main` → 远端无新提交。
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐。
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`。
+- `git status` → clean，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 lock 文件。
+- `HUMAN_INPUT.md` → 0 字节空文件，无待处理指令。
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 706ms，单次稳定运行）。
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）。
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成（仅余 1 个 `- [ ]` 是状态说明图例，不是真任务）。
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成。
+
+**双重 push race**：第一次 `git push origin agent-2-work:main` 被拒（origin/main 已演进到 `7198e00` — Agent-4 session 39），reset 后再次写 session 描述块 → commit `3b09f09`，第二次 push 又被拒（origin/main 已演进到 `2f954bd` — Agent-4 sessions 40 + 41）。按 [[feedback_avoid_duplicate_rebase]] 流程 `git reset --hard origin/main` 重置到 `2f954bd`，重新追加本 session 描述（含双重 race 记录）后再次 push。
+
+剩余可选（沿袭 session 15/17/19/21/22/23 的判断，继续不做）：
+
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明（纯文档，优先级低）
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（函数未 export，scope 风险高）
+
+结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，仅做 reset to origin/main（双重 push race 恢复）+ clean-state 验证并记录，保持原状。
+
+<!-- Agent-2: session 24 reset to origin/main (double push race) + clean-state verification at 2026-06-26 02:52 -->
