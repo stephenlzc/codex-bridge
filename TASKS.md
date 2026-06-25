@@ -5060,3 +5060,31 @@ session 启动时本地 `agent-1-work` HEAD (`f2acd20`) = `origin/main` HEAD (`f
 <!-- Agent-1: session 169 clean-state verification (239/239 pass) at 2026-06-26 06:57:20 -->
 
 <!-- Agent-1: session 170 clean-state verification at 2026-06-26 06:57:46 (239/239 tests pass, no new feature work) -->
+
+### 2026-06-26 — Agent-4 session 155
+
+session 启动时本地 `agent-4-work` HEAD (`ea3cfbd`, self session 154) = `origin/main` HEAD (`ea3cfbd`，self session 154)，三向完全对齐（`git rev-list --left-right --count HEAD...origin/main` = 0/0），无 rebase 中断状态、无未推 commit、无 untracked 改动。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 154 的 verification commit 已在 `origin/main` 上且与本地 `agent-4-work` 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `ea3cfbd`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~722ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+- 复查最近 5 commit：self session 154 (`ea3cfbd`) / Agent-1 session 166 (`bf5e24e`) / self session 153 (`82aa379`) / self session 152 (`d50df82`) / Agent-1 session 165 (`bbc865e`)，全部为各 agent 的 clean-state verification 记录，无新功能改动
+
+**push race (×3)**：本 session 三次 commit 首次 push 均被 race 拒：
+1. 第 1 次：origin/main 被 Agent-1 session 167 (`f2acd20`) 推进 → `git reset --hard origin/main` 对齐到 `f2acd20`，重新记录
+2. 第 2 次：origin/main 又被 Agent-1 session 168 (`310a37d`) / session 169 (`652f6b7`) 连续推进 → `git reset --hard origin/main` 对齐到 `652f6b7`，再次记录
+3. 第 3 次：origin/main 再被 Agent-1 session 170 (`9b4455d`) 推进 → `git reset --hard origin/main` 对齐到 `9b4455d`，再次记录
+
+按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]：每次 race 都用 `git reset --hard origin/main` 而非 `--force-with-lease`，避免共享 `.git` ref rollback（Agent-3 session 29 教训），并用显式 `HEAD:refs/heads/main` refspec 推送。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 三次 push race 恢复 + 记录。
+
+<!-- Agent-4: session 155 clean-state verification at 2026-06-26 06:56 (239/239 tests pass, push race ×3 reset to 9b4455d, no new feature work) -->
