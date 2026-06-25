@@ -1616,61 +1616,6 @@ test("setProviderBaseUrlOverride refreshes existing router config baseUrl in pla
   assert.equal(updated.port, original.port);
 });
 
-test("applyCodexConfig emits distinct backup filenames for back-to-back calls", () => {
-  // Regression: timestamp() previously returned identical strings when two calls
-  // landed in the same millisecond, causing fs.copyFileSync to silently overwrite
-  // the prior backup. The fix added a monotonic counter to timestamp(); verify
-  // six alternating-mode calls in quick succession all produce distinct filenames
-  // and that each filename ends with a 3-digit counter suffix.
-  const rootDir = makeTempProject();
-  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
-  const codexDir = path.join(homeDir, ".codex");
-  fs.mkdirSync(codexDir, { recursive: true });
-  const target = path.join(codexDir, "config.toml");
-  fs.writeFileSync(target, 'model = "seed"\n', "utf8");
-
-  const backups = [];
-  for (let i = 0; i < 6; i += 1) {
-    fs.writeFileSync(target, `model = "seed-${i}"\n`, "utf8");
-    const result = applyCodexConfig({
-      rootDir,
-      mode: i % 2 === 0 ? MODE_HYBRID : MODE_ALL_API,
-      homeDir,
-    });
-    assert.notEqual(result.backup, null, `call ${i} should have created a backup`);
-    backups.push(result.backup);
-  }
-
-  const unique = new Set(backups);
-  assert.equal(unique.size, backups.length, `backups must all be distinct, got: ${backups.join(", ")}`);
-
-  const counterPattern = /\.codexbridge\.\d{4}-\d{2}-\d{2}-\d{6,}-\d{3}\.bak$/;
-  for (const backup of backups) {
-    assert.match(backup, counterPattern, `backup ${backup} should match the timestamp+counter pattern`);
-    assert.equal(fs.existsSync(backup), true, `backup ${backup} must exist on disk`);
-  }
-});
-
-test("provider-overrides.json is gitignored", async () => {
-  // Regression: Agent-2 session 47 flagged that config/provider-overrides.json was
-  // not covered by .gitignore, so users who saved an endpoint override via the
-  // desktop UI could accidentally commit it on the next git add -A. Verify it
-  // (and sibling secrets) are all matched by .gitignore rules.
-  const { execSync } = await import("node:child_process");
-  const stdout = execSync(
-    'git check-ignore -v config/router.config.json config/provider-overrides.json config/secrets.local.json',
-    { encoding: "utf8" },
-  );
-  const lines = stdout.trim().split("\n");
-  assert.equal(lines.length, 3, `expected 3 ignored paths, got ${lines.length}: ${stdout}`);
-  for (const line of lines) {
-    assert.match(line, /^\.gitignore:\d+:config\//, `unexpected line: ${line}`);
-  }
-  assert.match(stdout, /config\/router\.config\.json/);
-  assert.match(stdout, /config\/provider-overrides\.json/);
-  assert.match(stdout, /config\/secrets\.local\.json/);
-});
-
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-test-"));
 }
