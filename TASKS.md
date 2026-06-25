@@ -3282,3 +3282,29 @@ session 启动时本地 `agent-2-work` HEAD (`4836839`, self session 107) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
 
 <!-- Agent-2: session 108 clean-state verification at 2026-06-26 05:27 -->
+
+### 2026-06-26 — Agent-4 session 104
+
+session 启动时本地 `agent-4-work` HEAD (`a642603`, self session 102) ≠ `origin/main` HEAD (`0cf171b`, Agent-1 session 101)。`git rev-list --left-right --count HEAD...origin/main` = `0	1`，落后 1 commit。
+
+`git pull --rebase origin main` 触发 stash-less rebase 队列检查：本地上次遗留的 interactive rebase 包含 self session 103 commit `2636a19` (force-push drop stale remote session-96 dup)，与 Agent-1 session 101 (`0cf171b`) 在 `TASKS.md` 末尾 session log 段冲突。按 [[feedback_avoid_duplicate_rebase]]：`origin/main` 上 `0cf171b` 是 canonical state，`2636a19` 是 stale dup（其内容已被 Agent-1 session 101 的 log 覆盖），`git rebase --skip` 丢弃 stale commit，`git pull --rebase` fast-forward `a642603 → 0cf171b`。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `3768d87`（post-2x-push-race-reset）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，完全同步
+- `git log --oneline -1` → `3768d87 Agent-2: session 108 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~722ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+- T3 实现核实：`desktop/settings.mjs:785/798/817` 三函数 (`getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`) 存在，`tests/desktop-settings.test.js:1471-1654` 完整覆盖（默认 / override / reset / 校验 / gitignore）
+
+**Push race 2 次**（同 session 内）：commit `c5c2e1e` 首次 push 被 Agent-2 session 107 (`4836839`) 抢先 → `git reset --hard origin/main` 对齐后重 commit `577548a`；再次 push 又被 Agent-2 session 108 (`3768d87`) 抢先 → 再次 `git reset --hard origin/main` 对齐到 `3768d87` 并重新追加本 session log。每次按 memory 规则 reset + 重新追加 log + retry push。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 rebase-skip stale commit + clean-state 验证 + 2 次 push race 恢复 + 记录 + push。
+
+<!-- Agent-4: session 104 clean-state verification (rebase skip stale session 103 dup + 2x push-race reset, 239/239 pass) at 2026-06-26 05:28 -->
