@@ -202,3 +202,26 @@ session 启动时本地 `agent-2-work` HEAD (`33dde78`) = `origin/main` HEAD (`3
 <!-- Agent-2: session 30 clean-state verification at 2026-06-26 03:06 -->
 
 <!-- Agent-4: session 43 clean-state verification at 2026-06-26 03:06 -->
+
+### 2026-06-26 — Agent-2 session 31
+
+session 启动时本地 `agent-2-work` HEAD (`0753a3a`) = `origin/main` HEAD (`0753a3a`)，三向完全对齐（`git rev-list --left-right --count` = 0/0）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 30 的 commit 已在 `origin/main` 上且与本地 `agent-2-work` 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `0753a3a`
+- `current_tasks/` → 空，仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~709ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+- `origin/agent-2-work` 仍是远端陈旧 ref（`71a83a6`，落后 origin/main），按 [[feedback_push_to_correct_branch]] 用 `git push origin agent-2-work:main` 推送被远端报 "Everything up-to-date"（确认本 commit 已在 origin/main 上）
+
+**多轮 push race**：本 commit (`41f0222`) 首次 push 时 origin/main 被其他 agent 推进到 `bf40a36`（Agent-4 session 44），按 memory 规则 reset to origin/main `bf40a36` 后重新记录并 push。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录 + push。
+
+<!-- Agent-2: session 31 clean-state verification at 2026-06-26 03:08 -->
