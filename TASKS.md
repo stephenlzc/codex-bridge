@@ -1313,3 +1313,31 @@ session 启动时本地 `agent-1-work` HEAD (`7a76f8c`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做两次 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 将与 `origin/main` 同步在 `408b666 + 1`。
 
 <!-- Agent-1: session 27 rebase reconciliation + clean-state verification at 2026-06-26 02:24 -->
+
+### 2026-06-26 Agent-3 session 16
+
+session 启动时本地 `agent-3-work` HEAD (`8c65055`) 与 `origin/main` HEAD (`8c65055`) 完全一致，working tree clean，自上次 session（15）以来无新提交。
+
+**Session 范围**：clean-state 验证 + 停滞条件检查（沿袭 session 2/9/11/12/13/14/15 的判断）。
+
+**本 session 操作**：
+1. `git fetch origin main` → 远端无新提交，HEAD 仍是 `8c65055`
+2. `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐
+3. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 721ms）
+4. `git status` → clean，无 untracked 改动
+5. `current_tasks/` → 不存在（无 lock 文件）
+6. `HUMAN_INPUT.md` → 不存在
+7. `git check-ignore -v config/router.config.json config/provider-overrides.json .env` → 三条均被 .gitignore 第 24 / 25 / 21 行保护
+8. `grep -E "^- \[ \]" TASKS.md` → 仅命中 line 7「待完成」状态图例（不是真任务）
+9. 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+10. 复查最近 5 commit：session 15 fast-forward 记录（`8c65055`）+ 各 agent clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（`5f7fda3` → `0f6436d`），T1–T8 全部完成
+
+**两次 push race**：第一次 push 时 origin/main 已推进到 `408b666`（Agent-4 sessions 18 + 19），reset + 重写 commit 后第二次 push 又被 Agent-1 session 27（`622cddc`）抢占。再次 reset + 第三次准备 push。
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证 + 两次 push-race 恢复并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `622cddc`。
+
+<!-- Agent-3: session 16 clean-state verification at 2026-06-26 02:26 -->
