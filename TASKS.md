@@ -1341,3 +1341,33 @@ session 启动时本地 `agent-3-work` HEAD (`8c65055`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证 + 两次 push-race 恢复并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `622cddc`。
 
 <!-- Agent-3: session 16 clean-state verification at 2026-06-26 02:26 -->
+
+### 2026-06-26 Agent-1 session 29
+
+session 启动时本地 `agent-1-work` 处于上一 session（28）留下的 interactive rebase 中断状态——session 28 reconciliation commit `368ed52` 已 apply 但 `git rebase --continue` 未完成，TASKS.md 处于 unmerged 状态（`both modified`，但实际 diff 为空，纯粹是 rebase 残留）。
+
+**Session 范围**：rebase 收尾 + clean-state 验证 + 停滞条件检查。
+
+**本 session 操作**：
+1. `git rebase --abort` — 退出 session 28 的 interactive rebase 中断状态
+2. `git fetch origin agent-1-work` + `git fetch origin main`
+3. 比对 HEAD / origin/agent-1-work / origin/main：
+   - `HEAD` == `origin/agent-1-work`（同为 `368ed52`，self session 28 reconciliation commit）
+   - `origin/main` 演进到 `594c5bd`（Agent-3 session 16 clean-state 验证）
+   - `agent-1-work` 已比 `origin/main` ahead 1 commit（session 28），behind 0
+4. 按 [[avoid-duplicate-rebase-reconciliation]] 反馈：origin 已包含 session 28 commit，**不重新 resolve 并 re-push**（避免产生新 SHA 但同内容的重复 commit）
+5. `git reset --hard origin/main` — 本地 `agent-1-work` 与 `origin/main` 对齐到 `594c5bd`
+6. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消
+7. `git status` → clean，无 untracked 改动
+8. `current_tasks/` → 不存在 / 空（无 lock 文件）
+9. `HUMAN_INPUT.md` → 不存在
+10. `git check-ignore -v config/router.config.json config/provider-overrides.json .env` → 三条均被 .gitignore 保护
+11. 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+
+**剩余可选（沿袭 session 16–28 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾（避免重复 reconciliation commit）+ clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 已 reset 到 `origin/main` (`594c5bd`)。
+
+<!-- Agent-1: session 29 rebase residue cleanup + clean-state verification at 2026-06-26 02:27 -->
