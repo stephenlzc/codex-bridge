@@ -1398,3 +1398,40 @@ session 启动时本地 `agent-1-work` 处于上一 session（28）留下的 int
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾（避免重复 reconciliation commit）+ clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 已 reset 到 `origin/main` (`594c5bd`)。
 
 <!-- Agent-1: session 29 rebase residue cleanup + clean-state verification at 2026-06-26 02:27 -->
+
+### 2026-06-26 Agent-3 session 18
+
+session 启动时本地 `agent-3-work` 处于上一 session（17）留下的 interactive rebase 中断状态——session 17 reconciliation commit `ed3d4e9` 已 apply（`pick ed3d4e9 # Agent-3: session 17 clean-state 验证`）但 `git rebase --continue` 未完成，TASKS.md 处于 unmerged 状态（`both modified`）。
+
+**Session 范围**：rebase 收尾 + clean-state 验证 + 停滞条件检查。
+
+**本 session 操作**：
+
+1. `git status` 确认 rebase 中断：pick `ed3d4e9` 已 done、No commands remaining、TASKS.md unmerged
+2. `git rebase --abort` — 退出 session 17 的 interactive rebase 中断状态；本地 `agent-3-work` 回到 `ed3d4e9`（即 `origin/agent-3-work` 同一 SHA）
+3. `git fetch origin` + `git ls-remote origin main` + `git log origin/agent-3-work origin/main origin/agent-2-work` 比对：
+   - `origin/agent-3-work` HEAD = `ed3d4e9`（Agent-3 session 17 reconciliation commit）
+   - `origin/main` HEAD = `392726f`（Agent-4 session 20 clean-state 验证，已演进过 session 17 之后：Agent-1 session 29 → Agent-4 session 20）
+   - `origin/agent-2-work` HEAD = `fb0f064`（Agent-2 session 22）
+   - `origin/agent-3-work` 仍停在 `594c5bd`（session 16），其 session 17 commit `ed3d4e9` 未被 `origin/main` 包含
+4. 按 [[avoid-duplicate-rebase-reconciliation]] 反馈：session 17 commit `ed3d4e9` 已在 `origin/agent-3-work`，**不重新 resolve 并 re-push 到 `agent-3-work`**（避免产生新 SHA 但同内容的重复 commit）
+5. `git reset --hard origin/main` — 本地 `agent-3-work` 与 `origin/main` 对齐到 `392726f`（HEAD 现在包含 Agent-1 session 29 + Agent-4 session 20 的 TASKS.md 笔记，但**不**包含 Agent-3 session 17 笔记——避免与已存在的 `origin/agent-3-work ed3d4e9` 重复）
+6. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 712ms）
+7. `git status` → clean，无 untracked 改动
+8. `current_tasks/` → 不存在（无 lock 文件）
+9. `HUMAN_INPUT.md` → 不存在
+10. 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+
+**关于 `origin/agent-3-work ed3d4e9` 的去留判断**：
+- 该 SHA 内容是 Agent-3 session 17 clean-state verification 笔记，与本 session 任务无关；删除或保留都不会推进 issue #1
+- 沿袭 [[avoid-duplicate-rebase-reconciliation]] 的「一个 session 产生一个 commit」原则，本 session 不主动 force-push `agent-3-work` 去覆盖 `ed3d4e9`，让 `origin/agent-3-work` 自然陈旧
+- `origin/main` 才是 swarm 协作的真主轴——本 session 在 `origin/main` 之上追加 session 18 笔记是正确路径
+
+**剩余可选（沿袭 session 16–17 的判断，继续不做）**：
+
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾（避免重复 reconciliation commit）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 已 reset 到 `origin/main` (`392726f`)。下一步由 push race 决定——若 push 时 origin/main 又被其他 agent 推进，按 [[avoid-duplicate-rebase-reconciliation]] 流程再 reset + re-write。
+
+<!-- Agent-3: session 18 rebase residue cleanup + clean-state verification at 2026-06-26 02:28 -->
