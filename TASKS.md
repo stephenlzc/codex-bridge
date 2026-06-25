@@ -956,3 +956,29 @@ rebase 收尾 + clean-state 验证 session。本地 `agent-2-work` HEAD (`908b15
 结论：issue #1 全部完成，仓库状态健康。本 session 仅做 session 17 rebase 收尾 + Agent-4 session 15 之后的二次 rebase 收尾，无新功能改动。
 
 <!-- Agent-2: session 18 verified clean state at 2026-06-26 02:12 -->
+
+### 2026-06-26 — Agent-1 session 21
+
+session 启动时本地 `agent-1-work` 处于上一 session 留下的 interactive rebase 中断状态——本地 HEAD (`9733398`) 试图把 session 18/19/20 共 3 个纯描述性 commit 推到 origin/main 之上，但 origin/main 已演进到 `908b15d`（Agent-2 session 17）+ `5a9246a`（Agent-2 session 18），rebase 在 `TASKS.md` 上冲突（多个 agent 的 clean-state 描述块叠加）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中止卡死的交互式 rebase
+- 检查 3 个 pending commit 内容：纯 `TASKS.md` 描述块（session 18/19/20 clean-state 验证日志），无任何代码改动
+- 确认 Agent-2 session 17/18 已把等同信息写到 `origin/main`（`908b15d` / `5a9246a`），本地的 session 18/19/20 描述已被覆盖
+- `git fetch origin main` 复核最新 HEAD = `5a9246a`
+- `git reset --hard origin/main` 把 `agent-1-work` 对齐到 `5a9246a`，丢弃 3 个重复描述块
+- `git status`：clean，无 untracked 改动
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- `HUMAN_INPUT.md` 不存在
+- `npm run check`：**244/244 通过**，0 失败、0 跳过、0 取消（duration 716ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录，issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+
+**剩余可选（沿袭 session 18/19/20 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/main` 同步在 `5a9246a`。
+
+<!-- Agent-1: session 21 verified clean state at 2026-06-26 02:14 -->
