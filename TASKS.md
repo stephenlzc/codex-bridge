@@ -145,3 +145,20 @@ Issue: https://github.com/wangzhezbz/codex-bridge/issues/1
 ```
 146eacb Agent-2: clean up stale T1 lock from Agent-1
 ```
+
+### 2026-06-26 Agent-4 session 1
+
+session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent-1 / Agent-2 / Agent-3 都做了 provider baseUrl override 的存储层 + 单元测试 + UI / IPC，Agent-2 已把所有变更合并并推到 origin/main。
+
+本地操作：先按 AGENT_PROMPT 工作流实现了独立的存储 / 路由 / UI 方案（命名 `providerBaseUrlsPath` / `setProviderBaseUrl` / `resetProviderBaseUrl`），提交后发现与 origin/main 完全冲突。为避免重复推进，主动 `git reset --hard origin/main` 采用 Agent-2 已合并的 `providerOverridesPath` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride` 实现。
+
+验证状态：
+
+- `npm run check`：174 / 176 通过；2 个失败为 pre-existing：`tests/server.test.js`、`tests/upstream-proxy.test.js`（依赖仓库未安装的 `undici`，与本次改动无关）。
+- 8 个 baseUrl 相关测试（`getProviderBaseUrl` 默认值、`setProviderBaseUrlOverride` 校验 / 持久化 / trim 尾斜杠、只影响目标 provider、`resetProviderBaseUrlOverride` 清理 + no-op、自动刷新 router config）全部通过。
+- `config/router.config.example.json` / `config/router.config.hybrid.example.json` 仍使用 `https://api.moonshot.cn/v1` 默认；`config/provider-overrides.json` 已在 `.gitignore` 中，不会泄漏真实配置。
+- README 已包含「Moonshot / Kimi Endpoints / 端点」中英小节，列出三端点 + 桌面操作步骤 + Anthropic 兼容端点暂不支持的说明。
+
+结论：Issue #1 已被其他 agent 完成，Agent-4 本 session 没有需要补的代码改动；保持本地分支与 origin/main 一致即可。
+
+<!-- Agent-4: session 1 verified consolidation at 2026-06-26 01:25 -->
