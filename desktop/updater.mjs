@@ -258,6 +258,14 @@ function Show-UpdateFailure([string]$Message) {
   }
 }
 
+function Open-UpdateFolder() {
+  try {
+    Start-Process -FilePath "explorer.exe" -ArgumentList $WORK_DIR
+  } catch {
+    Write-UpdateLog ("Could not open update folder: " + $_.Exception.Message)
+  }
+}
+
 function Find-CodexBridgeAppDir([string]$Root) {
   $matches = @()
   $exeFiles = Get-ChildItem -LiteralPath $Root -Filter $EXE_NAME -File -Recurse
@@ -347,11 +355,8 @@ try {
       Rename-Item -LiteralPath $backupDir -NewName $appLeaf
     }
   }
-  $fallbackExe = Join-Path $CURRENT_APP_DIR $EXE_NAME
-  if (Test-Path -LiteralPath $fallbackExe) {
-    Write-UpdateLog "Starting existing CodexBridge after failed update: $fallbackExe"
-    Start-Process -FilePath $fallbackExe -WorkingDirectory (Split-Path -Parent $fallbackExe)
-  }
+  Write-UpdateLog "Update failed; old app directory was restored and left closed."
+  Open-UpdateFolder
   Show-UpdateFailure $failureMessage
 }
 `;

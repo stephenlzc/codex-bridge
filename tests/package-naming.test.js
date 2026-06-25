@@ -40,6 +40,7 @@ test("desktop portable update exits the tray process before file replacement", (
   assert.match(main, /tray\.destroy\(\)/);
   assert.match(main, /mainWindow\.destroy\(\)/);
   assert.match(main, /app\.exit\(0\)/);
+  assert.match(main, /process\.exit\(0\)/);
   assert.match(main, /launchPortableUpdater\(prepared\.scriptPath,\s*\{/);
   assert.match(main, /onSpawn:\s*\(\) => exitForPortableUpdate\(\)/);
   assert.match(main, /onError:\s*\(error\) =>/);
@@ -63,6 +64,8 @@ test("desktop updater keeps downloaded package visible in the update folder", ()
   assert.match(main, /const updatesDir = portableUpdatesDir\(\)/);
   assert.match(main, /path\.resolve\(path\.dirname\(process\.execPath\), "\.\.", "updates"\)/);
   assert.match(main, /const downloadPath = path\.join\(updatesDir, `\$\{stamp\}-\$\{plan\.asset\.name\}`\)/);
+  assert.match(main, /const finalBytes = fs\.statSync\(targetPath\)\.size/);
+  assert.match(main, /更新包下载不完整/);
   assert.match(main, /function writeManualUpdateInstructions/);
   assert.doesNotMatch(main, /path\.join\(updatesDir, "downloads"\)/);
 });

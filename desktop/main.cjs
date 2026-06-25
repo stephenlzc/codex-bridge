@@ -860,6 +860,13 @@ async function downloadFile(url, targetPath, {
   });
   await pipeline(Readable.fromWeb(response.body), progressStream, fs.createWriteStream(targetPath));
   emit(true);
+  const expectedFinalBytes = Number(expectedBytes || totalBytes || 0);
+  if (expectedFinalBytes > 0) {
+    const finalBytes = fs.statSync(targetPath).size;
+    if (finalBytes !== expectedFinalBytes) {
+      throw new Error(`更新包下载不完整：expected ${expectedFinalBytes} bytes, got ${finalBytes} bytes`);
+    }
+  }
 }
 
 function launchPortableUpdater(scriptFile, { onSpawn, onError } = {}) {
@@ -907,6 +914,7 @@ function exitForPortableUpdate() {
     mainWindow.destroy();
   }
   app.exit(0);
+  setTimeout(() => process.exit(0), 1000).unref();
 }
 
 function currentMacAppBundle() {
