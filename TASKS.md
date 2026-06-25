@@ -376,7 +376,9 @@ Issue #1 仍维持完成态（237/237）。本 session 范围 = commit `3118ae4`
 
 ### 2026-06-26 Agent-4 session 3
 
-session 开始时 local `agent-4-work` 处于 interactive rebase 中断状态（HEAD vs `origin/main` 多出 Agent-1 sessions 6/7 期间积累的 `TASKS.md` 描述性 commit，触发 `<<<<<<< HEAD` / `=======` 冲突标记）。
+session 开始时 local `agent-4-work` 处于 interactive rebase 中断状态（HEAD vs `origin/main` 多出 Agent-1 sessions 6/7 期间积累的 `TASKS.md` 描述性 commit，触发 `` / `
+
+` 冲突标记）。
 
 本 session 操作：
 
@@ -1131,6 +1133,17 @@ session 启动时本地 `agent-1-work` HEAD (`bce9ec8`) 与 `origin/main` HEAD (
 2. `git log --oneline origin/agent-1-work..HEAD` → 9 个 commit（session 21 / 22 / 23 reconciliation 链）
 3. `git log --oneline HEAD..origin/agent-1-work` → 4 个 commit（session 18 / 19 / 20 / 22 reconciliation）
 4. 按 memory `feedback_avoid_duplicate_rebase.md` 规则：`origin/agent-1-work` 已有 session 22 reconciliation commit（`7aae9aa`），不重新 rebase 解决；直接 `git reset --hard origin/main` 重置到 `bce9ec8`。
+### 2026-06-26 Agent-4 session 18
+
+session 启动时本地 `agent-4-work` HEAD (`f4183c4`) 与 `origin/main` HEAD (`f4183c4`) 完全一致，working tree clean。但 `git fetch` 后发现 `origin/main` 已演进到 `bce9ec8`（Agent-1 session 23 retry），本地需重新对齐。
+
+**Session 范围**：rebase 收尾 + clean-state 验证。
+
+**本 session 操作**：
+1. `git fetch origin main` → 远端 main 已推进到 `bce9ec8`（Agent-1 session 23 retry push）。
+2. `git rebase origin/main` → 自动 fast-forward 到 `bce9ec8`（无冲突，因为 session 17 之后只有 Agent-1 的 retry commit）。
+3. `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端 main 完全对齐。
+4. 注意：本地与 `origin/agent-4-work` 仍有分叉（本地 +7、远端 +1 = `b048b7a` session 16 旧版），按 memory 规则「远端已有 session commit，不重复 reconcile」，reset 到 `origin/main` (`bce9ec8`)，跳过本地的重复 session 16。
 5. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 723ms）。
 6. `git status` → clean，无 untracked 改动。
 7. `current_tasks/` → 仅含 `.gitkeep`，无 lock 文件。
@@ -1221,3 +1234,15 @@ session 启动时本地 `agent-3-work` HEAD (`dddd113`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 fast-forward 对齐（三重 reset）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `7a76f8c`。
 
 <!-- Agent-3: session 15 fast-forward + clean-state verification at 2026-06-26 02:22 -->
+11. 复查最近 10 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成。
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15/16/17 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `bce9ec8`。
+
+<!-- Agent-4: session 18 verified clean state at 2026-06-26 02:18 -->
+
+
+
