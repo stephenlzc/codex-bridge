@@ -5330,3 +5330,4 @@ session 启动时本地 `agent-1-work` HEAD (`8a97389`, self session 179) ≠ `o
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
 
 <!-- Agent-1: session 180 clean-state verification at 2026-06-26 07:13 (239/239 tests pass, no new feature work) -->
+<!-- Agent-1: session 181 clean-state verification at 2026-06-26 07:14 (239/239 tests pass, no new feature work) -->
