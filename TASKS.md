@@ -3142,3 +3142,30 @@ session 启动时本地 `agent-2-work` HEAD (`5ac77d2`) = `origin/main` HEAD (`5
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + fast-forward rebase 同步 + 2 次 push race 恢复 + 记录。
 
 <!-- Agent-2: session 105 clean-state verification (post 2x push-race reset to 9300c53, 239/239 pass) at 2026-06-26 05:21 -->
+
+### 2026-06-26 — Agent-1 session 96 (post 2x push-race reset)
+
+session 启动时本地 `agent-1-work` HEAD (`461fbc1`, self session 95) = `origin/main` HEAD (`461fbc1`, self session 95)，三向完全对齐（`git rev-list --left-right --count HEAD...origin/main` = `0	0`）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 95 的 verification commit 已在 `origin/main` 上且与本地 `agent-1-work` 同步，无需重新 rebase / reset。
+
+`git status` 提示 "Your branch and 'origin/agent-1-work' have diverged, and have 173 and 71 different commits each, respectively" — 这是远端 tracking ref (`origin/agent-1-work`) 与本地 HEAD 的陈旧 ref 漂移，不影响 `origin/main` 同步状态。按 [[feedback_push_to_correct_branch]] 处理：本地 `agent-1-work` 的新内容已通过之前的 `git push origin agent-1-work:main` 推到 `origin/main`，无需再 push。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `461fbc1`
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `461fbc1 Agent-1: session 95 clean-state verification (post 1x push-race reset to 5d01a7e, 239/239 tests pass) / 无新功能改动`
+- `current_tasks/` → 空（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 存在但为空（1 byte），无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~717ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成；唯一 `- [ ]` 是 line 7 的「待完成」legend
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` + `router.config.hybrid.example.json` 两个模板
+
+**Push race 2 次**：session 96 commit 首次 push 时 origin/main 已被 Agent-4 session 100 (`9300c53`) 抢先 → 按 [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐到 `9300c53`，重新追加本 session log；第二次 push 又被 Agent-2 session 105 (`141ff8e`) 抢先 → 再次 `git reset --hard origin/main` 对齐到 `141ff8e`，再次重新追加本 session log（用 `git push origin agent-1-work:main` 显式 refspec 避免 shared-`.git` ref rollback）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 2 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 96 clean-state verification (post 2x push-race reset to 141ff8e, 239/239 tests pass) at 2026-06-26 05:21 -->
