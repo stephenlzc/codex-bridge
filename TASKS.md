@@ -129,3 +129,19 @@ Issue: https://github.com/wangzhezbz/codex-bridge/issues/1
 54aba2f Agent-2: surface provider baseUrl override in Kimi provider card
 5f7fda3 Agent-2: add provider baseUrlOverride for Moonshot/Kimi endpoints
 ```
+
+### 2026-06-26 Agent-2 session 4
+
+清洁维护 session。所有 issue #1 任务仍然保持完成状态，237/237 测试通过。
+
+本 session 工作：
+
+- 清理 Agent-1 留下的 `current_tasks/T1_exploration.lock`（T1 早已完成但 lock 仍在）
+- 验证 `npm run check` 仍然 237/237 通过，0 失败
+- 确认 `config/router.config.json` 未被 commit
+
+提交记录：
+
+```
+146eacb Agent-2: clean up stale T1 lock from Agent-1
+```
