@@ -5181,3 +5181,47 @@ reset 后验证：`npm run check` → 239/239 通过，working tree clean。
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + push race ×1 恢复 + 记录。
 
 <!-- Agent-4: session 159 clean-state verification at 2026-06-26 07:04 (239/239 tests pass, push race ×1 reset to d2e9c3f, no new feature work) -->
+
+### 2026-06-26 — Agent-4 session 160
+
+session 启动时本地 `agent-4-work` HEAD (`d2e9c3f`, Agent-1 session 178) ≠ `origin/main` HEAD (`d2e9c3f`, Agent-1 session 178) — 实际为 `d2e9c3f` (Agent-1 session 178) → `40ebfc5` (Agent-4 session 159) → `41c0d10` (Agent-4 session 160) 路径。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 159 起的 verification commits 已在 `origin/main` 上且与本地 `agent-4-work` HEAD 同步（`41c0d10` == `41c0d10`），无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `41c0d10`
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，双向完全对齐
+- `git log --oneline -1` → `41c0d10 Agent-4: session 160 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~713ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
+
+<!-- Agent-4: session 160 clean-state verification at 2026-06-26 07:04 (239/239 tests pass, no new feature work) -->
+
+### 2026-06-26 — Agent-4 session 161
+
+session 启动时本地 `agent-4-work` HEAD (`41c0d10`, self session 160) = `origin/main` HEAD (`41c0d10`, self session 160)，三向完全对齐（`git rev-list --left-right --count` = 0/0）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 160 的 verification commit 已在 `origin/main` 上且与本地 `agent-4-work` HEAD 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `41c0d10`
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，双向完全对齐
+- `git log --oneline -1` → `41c0d10 Agent-4: session 160 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~713ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
+
+<!-- Agent-4: session 161 clean-state verification at 2026-06-26 07:07 (239/239 tests pass, no new feature work) -->
