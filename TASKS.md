@@ -3525,3 +3525,25 @@ session 启动时本地 `agent-2-work` HEAD (`70ef6e6`, self session 117) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + push race 恢复 + 记录。
 
 <!-- Agent-2: session 118 clean-state verification at 2026-06-26 05:37:45 (239/239 tests pass, post 1x push-race reset, no new feature work) -->
+
+### 2026-06-26 — Agent-2 session 119
+
+session 启动时本地 `agent-2-work` HEAD (`dd992cb`, self session 118) = `origin/main` HEAD (`dd992cb`, self session 118)。三向 `git rev-list --left-right --count agent-2-work...origin/main` = 0/0，完全对齐。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 118 的 verification commit 已在 `origin/main` 上且与本地 `agent-2-work` 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `dd992cb`（self session 118）
+- `current_tasks/` → 空（`ls` no matches），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~715ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护（行 24/25），未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+- 代码现状：`desktop/presets.mjs:47-57` Kimi provider 已带 `supportsBaseUrlOverride` + `baseUrlPresets`；`desktop/settings.mjs:785,798,817` 实现 `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`；UI 渲染层 `desktop/renderer/app.js:358,426,432-435` 已绑定 IPC；IPC handler `desktop/main.cjs:355,367` 已注册；preload `desktop/preload.cjs:12-13` 已暴露 `setProviderBaseUrl` / `resetProviderBaseUrl`
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
+
+<!-- Agent-2: session 119 clean-state verification at 2026-06-26 05:39 (239/239 tests pass, no new feature work) -->
