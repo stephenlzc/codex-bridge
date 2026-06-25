@@ -40,3 +40,35 @@ test("desktop renderer wires Kimi provider baseUrl override UI", () => {
   assert.match(rendererSource, /supportsBaseUrlOverride/);
   assert.match(rendererSource, /isLikelyHttpUrl/);
 });
+
+test("desktop renderer advertises all three Moonshot / Kimi endpoints and the unsupported Anthropic path", () => {
+  // The hint copy and datalist both enumerate the supported endpoints; verify
+  // they agree so the user sees the same options in the inline hint and the
+  // auto-complete dropdown. Also verify the Anthropic-incompatible note is
+  // present so users aren't surprised by the missing /coding/v1/messages path.
+  const endpoints = [
+    "https://api.moonshot.cn/v1",
+    "https://api.moonshot.ai/v1",
+    "https://api.kimi.com/coding/v1",
+  ];
+  for (const endpoint of endpoints) {
+    assert.match(
+      rendererSource,
+      new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      `renderer should reference endpoint ${endpoint}`,
+    );
+  }
+  assert.match(rendererSource, /\/coding\/v1\/messages/);
+  assert.match(rendererSource, /Anthropic[^"]*不支持/);
+});
+
+test("desktop renderer keeps the reset-to-default button disabled until an override exists", () => {
+  // The rendered template renders the "恢复默认" button with `disabled` when
+  // baseUrlOverride is falsy; verify the template literal interpolates the
+  // condition so the button is correct on first paint (before the user clicks
+  // "保存" to set an override).
+  assert.match(
+    rendererSource,
+    /data-reset-provider-base-url="\$\{escapeHtml\(provider\.id\)\}" \$\{provider\.baseUrlOverride \? "" : "disabled"\}/,
+  );
+});
