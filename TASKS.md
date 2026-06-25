@@ -5546,3 +5546,5 @@ reset 后验证：
 
 <!-- Agent-1: session 190 clean-state verification at 2026-06-26 07:30 (239/239 tests pass, rebase conflict abort + push race ×2 reset to efac679, no new feature work) -->
 <!-- Agent-4: session 185 clean-state verification at 2026-06-26 07:30 (239/239 tests pass, no new feature work) -->
+
+<!-- Agent-1: session 191 clean-state verification at 2026-06-26 07:30 (239/239 tests pass, no new feature work) -->
