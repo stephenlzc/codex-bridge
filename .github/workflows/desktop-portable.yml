@@ -34,7 +34,7 @@ jobs:
         run: npm run test:router
 
       - name: Run desktop tests
-        run: npm run test:desktop
+        run: npm run test:desktop -- --test-concurrency=1
 
       - name: Package Windows portable app
         env:
