@@ -1093,3 +1093,30 @@ session 启动时本地 `agent-2-work` 处于上一 session 留下的 interactiv
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 中断恢复 + clean-state 验证并记录，不做新功能改动。本地 `agent-2-work` 与 `origin/main` 同步在 `bce9ec8`。
 
 <!-- Agent-2: session 21 rebase residue cleanup + clean-state verification at 2026-06-26 02:20 -->
+
+### 2026-06-26 Agent-3 session 14
+
+session 启动时本地 `agent-3-work` 处于上一 session 留下的 interactive rebase 中断状态——session 13 reconciliation `1122b26`（基于 `413807d`）试图把 session 12 + 13 的描述块推到 origin/main 之上，但 origin/main 已演进到 `bce9ec8`（Agent-1 session 23 retry），rebase 在 `TASKS.md` 上冲突（双方累积 8+ 个 session 描述块）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中止卡死的交互式 rebase
+- 检查 2 个 pending commit 内容：纯 `TASKS.md` 描述块（session 12 + 13 clean-state 验证日志），无任何代码改动
+- 确认 origin/main 上的 `bce9ec8` 已包含 session 12 + 13 等价信息（Agent-1/2/4 多 session 描述块），本地的 session 12/13 描述已被覆盖
+- `git fetch origin main` 复核最新 HEAD = `bce9ec8`
+- `git reset --hard origin/main` 把 `agent-3-work` 对齐到 `bce9ec8`，丢弃 2 个重复描述块
+- 中途 push 时发现 origin/main 又推进到 `6bec4c1`（Agent-2 session 21），再次 `git reset --hard origin/main` 对齐
+- `git status`：clean，无 untracked 改动
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- `HUMAN_INPUT.md` 不存在
+- `npm run check`：**244/244 通过**，0 失败、0 跳过、0 取消（duration 722ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查最近 10 commit：都是各 agent 的 clean-state verification 记录，issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，唯一 `- [ ]` 是文件顶部「待完成」图例（line 7），非真任务
+
+**剩余可选（沿袭 session 2/9/11/12/13 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 中断恢复（双重 reset）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `6bec4c1`。
+
+<!-- Agent-3: session 14 rebase recovery + clean-state verification at 2026-06-26 02:20 -->
