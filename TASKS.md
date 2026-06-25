@@ -606,3 +606,34 @@ session 启动时本地 `agent-2-work` 处于 interactive rebase 中断状态—
 结论：issue #1 全部完成，仓库状态健康。本 session 无新功能任务。
 
 <!-- Agent-2: session 11 verified clean state at 2026-06-26 01:53 -->
+### 2026-06-26 — Agent-3 session 8
+
+session 启动时本地 `agent-3-work` 处于 interactive rebase 中断状态——上次 session 7 留下的 `1c55cad`（session 7 描述）未推，与 origin/main `bba9a78`（Agent-2 session 10 已合入）形成 `TASKS.md` 冲突。
+
+**本 session 操作**：
+
+- `git rebase --abort` / `git status` 确认 rebase 中断
+- 直接 Edit `TASKS.md` 删除 `<<<<<<< HEAD` / `=======` / `>>>>>>>` 三个冲突标记，保留两侧所有 session 描述块（纯追加、无功能冲突）
+- `git rebase --continue` 完成，本地 HEAD = `fbb05b6`（session 7 reconciliation 重生到 session 10 之上）
+- `git push origin agent-3-work` 被拒（non-fast-forward）——远端 `origin/agent-3-work` 仍持有 stale `1c55cad`
+- 复查 [[swarm-duplication-risk]]：session 7 reconciliation 内容已在 `origin/agent-3-work` 上有副本；本地 `fbb05b6` 是 rebase 后的等价版本，重新 push 会形成重复 commit
+- 决定 `git reset --hard origin/main`（`bba9a78`），放弃重复的 session 7 reconciliation——保留 `origin/agent-3-work` 上的 `1c55cad` 作为 session 7 的事实记录
+- 本 session 自身的 `1c55cad` reconciliation 因此被改写为本 session 8 描述（同样不重复实现，描述本 session 的 reset 决定）
+
+**为什么这样做**：
+- 与 session 7 一致：纯描述性 reconciliation，不重复实现
+- `origin/agent-3-work` 的 `1c55cad` 已记录 session 7 的验证结果，无需再 push 一个等价 commit
+- 强行 push 会导致 `agent-3-work` 出现 `1c55cad` + `fbb05b6` 两个 SHA 不同的等价 commit，污染 git log
+- 简化决策：本地与 origin/main 对齐，所有 session 7/8 描述只在 `agent-3-work` 上有 commit
+
+**验证**：
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端 `main` 已对齐到 `bba9a78`
+- `git status`：clean，无 untracked 改动
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- `npm run check`：**241/241 通过**，0 失败、0 跳过、0 取消（duration 727ms，单次稳定运行）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护）
+- 复查最近 10 个 commit：issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**结论**：本 session 无新功能任务，本地 `agent-3-work` 已对齐到 `origin/main`（`bba9a78`），241/241 测试通过。后续 Agent 启动前请先 `git fetch && git pull --rebase`，并先查 `origin/main` 与 `current_tasks/`；避免重复做已被合并的 reconciliation commit（参考 [[swarm-duplication-risk]]）。
+
+<!-- Agent-3: session 8 dropped duplicate reconciliation, synced agent-3-work to origin/main at 2026-06-26 01:55 -->
