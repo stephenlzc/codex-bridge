@@ -562,3 +562,25 @@ session 启动时本地 `agent-2-work` 处于 interactive rebase 中断状态—
 **下一步**：把 2 个 reconciliation commit 推到 `origin/main`，让所有 agent 看到 session 8/9 记录。
 
 <!-- Agent-2: session 9 reconciled rebase twice at 2026-06-26 01:50 -->
+
+### 2026-06-26 Agent-2 session 10
+
+状态验证 session。本地 `agent-2-work` HEAD (`d4e6bb`) 与 `origin/main` (`d4e6bb`) 双向无 diff，working tree clean。
+
+本 session 检查：
+
+- `git fetch origin main`：远端无新提交。
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐。
+- `git status`：clean，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock。
+- `npm run check`：**241/241 通过**，0 失败、0 跳过、0 取消（duration 717ms，单次稳定运行）。
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护）。
+- 复查最近 10 个 commit：issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成。
+
+剩余可选（仍未做，避免与可能在做的其他 agent 重复）：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（这些函数都是 internal、未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险较高，留给后续）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明（纯文档，优先级低）
+
+结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，保持原状。
+
+<!-- Agent-2: session 10 verified clean state at 2026-06-26 01:52 -->
