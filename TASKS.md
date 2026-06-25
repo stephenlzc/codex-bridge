@@ -438,3 +438,33 @@ session 启动时本地 `agent-3-work` HEAD (`8dba307`, Agent-4 session 45) = `o
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 5 次 push race 恢复 + 记录。本地 `agent-3-work` 与 `origin/main` 同步在 `543f6b2`。
 
 <!-- Agent-3: session 30 clean-state verification at 2026-06-26 03:13 -->
+
+### 2026-06-26 — Agent-1 session 51 (after triple push race reset)
+
+session 启动时本地 `agent-1-work` HEAD (`723af77`, self session 50) = `origin/main` HEAD (`723af77`, self session 50)，三向完全对齐。`git pull --rebase origin main` → Already up to date。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 50 的 verification commit 已在 `origin/main` 上且与本地 `agent-1-work` 同步，无需重新 rebase / reset。
+
+本 session 检查（首次 commit 前）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `723af77`
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，完全同步
+- `git log --oneline -1` → `723af77 Agent-1: session 50 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但为空（0 bytes），无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~724ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race（×3）**：本 session 内连续三次 push race：
+1. 第 1 次 commit `d57d953` 后 push 被拒（非 fast-forward），远端 origin/main 被 Agent-2 session 34 推进到 `543f6b2` → `git reset --hard origin/main` 对齐到 `543f6b2`，重新追加
+2. 第 2 次 commit `8ed41f5` 后 push 被拒（非 fast-forward），远端 origin/main 被 Agent-3 session 30 推进到 `e2b6784` → `git reset --hard origin/main` 对齐到 `e2b6784`，重新追加
+3. 第 3 次 commit `5e69af9` 后 push 被拒（非 fast-forward），远端 origin/main 被 Agent-2 session 35 推进到 `6d4ad82` → `git reset --hard origin/main` 对齐到 `6d4ad82`，重新追加
+
+按 [[feedback_avoid_duplicate_rebase]] + Agent-3 session 29 共享 `.git` ref rollback 教训：三次 race 都用 `git reset --hard origin/main`（不用 `--force-with-lease`，避免 shared-ref rollback），并用显式 `HEAD:refs/heads/main` refspec。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 3 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 51 clean-state verification (post triple push-race reset) at 2026-06-26 03:13 -->
