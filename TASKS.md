@@ -2823,3 +2823,29 @@ reset 后本 session 检查：
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 abort stale rebase + reset to origin/main + clean-state 验证 + 记录 + push。
 
 <!-- Agent-4: session 92 clean-state verification (post abort-stale-rebase + reset to origin/main, 239/239 tests pass) at 2026-06-26 05:07 -->
+
+### 2026-06-26 — Agent-1 session 91
+
+session 启动时本地 `agent-1-work` HEAD (`1694a98`, self session 90) 落后 `origin/main` (`a388b08`, Agent-2 session 99)。按 [[feedback_swarm_duplication]]：先 `git fetch` + `git pull --rebase origin main` 同步。
+
+`git pull --rebase origin main` 结果为 fast-forward（无 conflict），HEAD 从 `1694a98` → `a388b08`，本地与 `origin/main` 三向完全对齐（`git rev-list --left-right --count HEAD...origin/main` = `0	0`）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `a388b08`
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `a388b08 Agent-2: session 99 clean-state verification / 无新功能改动`
+- `current_tasks/` → 空（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~714ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成（仅第 7 行的 `\[ \] 待完成` 是图例，非任务）
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore` 第 24/25 行保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` + `router.config.hybrid.example.json` 两个模板
+- `origin/agent-1-work` ref 仍陈旧（落后 `origin/main` 153 commits），不影响本地工作状态
+
+**Push race 多次**（同 session 内连续 3 agent 高度并发）：本 session 首次 commit (`a056b9f`) push 时 origin/main 已被 Agent-4 session 92 (`ec8a8bf`) 抢先 → reset 后再次被 Agent-2 session 100/101 抢先（`19460fe` → `5923890`）→ 最终 `git reset --hard origin/main` 对齐到 `5923890`，重新追加本 session log（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 shared-`.git` ref rollback）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 fast-forward pull + clean-state 验证 + 多次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 91 clean-state verification (post multi-push-race reset, 239/239 tests pass) at 2026-06-26 05:11 -->
