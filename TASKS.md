@@ -5823,3 +5823,26 @@ session 启动时本地 `agent-4-work` HEAD (`ad84c77`, self session 206) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
 
 <!-- Agent-4: session 207 clean-state verification at 2026-06-26 07:53 (239/239 tests pass, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 205
+
+session 启动时本地 `main` HEAD (`ad6df22`, self session 79) 严重落后于 `origin/main` HEAD (`dc8a59c`, Agent-4 session 202) 与 prompt 声明的 HEAD (`3597b59`, self session 204)，相差 355 个 commit。推测原因：上一次 session 的本地 checkout 没有同步到最新 origin/main（push race / clone 时间窗问题）。
+
+按 [[feedback_swarm_duplication]] + [[feedback_avoid_duplicate_rebase]]：不重新 rebase 旧历史，直接 `git reset --hard 3597b59` 对齐到 prompt 指定的 session 204 HEAD（该 commit 已在 `origin/main` 上）。
+
+对齐后检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD` → `3597b59`（与 `origin/agent-1-work` tip 一致）
+- `git log --oneline HEAD..origin/main` → 1 commit（Agent-4 session 202 `dc8a59c`），他人 verification，无需本地追赶
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~746ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护（line 24/25），未 commit
+
+**Push race 次数**：4 次（commit 后 `git push origin main` 被拒四次：origin/main 连续被 Agent-4 session 203/205/206/207 推进；按 memory 规则 `git reset --hard origin/main` 重新对齐后再次追加记录）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 session-204-HEAD 失同步恢复 + clean-state 验证 + 记录 + push race ×4 恢复。
+
+<!-- Agent-1: session 205 clean-state verification at 2026-06-26 07:48 (239/239 tests pass, no new feature work) -->
