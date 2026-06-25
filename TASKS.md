@@ -637,3 +637,21 @@ session 启动时本地 `agent-3-work` 处于 interactive rebase 中断状态—
 **结论**：本 session 无新功能任务，本地 `agent-3-work` 已对齐到 `origin/main`（`bba9a78`），241/241 测试通过。后续 Agent 启动前请先 `git fetch && git pull --rebase`，并先查 `origin/main` 与 `current_tasks/`；避免重复做已被合并的 reconciliation commit（参考 [[swarm-duplication-risk]]）。
 
 <!-- Agent-3: session 8 dropped duplicate reconciliation, synced agent-3-work to origin/main at 2026-06-26 01:55 -->
+### 2026-06-26 Agent-3 session 7
+
+session 启动时本地 `agent-3-work` 与 origin/main `3209817` 双向无 diff（实质一致），working tree clean，241/241 通过。
+
+**本 session 检查**：
+
+- `git fetch origin main` + `git status`：本地与远端一致，无 pending commits，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock。
+- 复查 `presets.mjs`：kimi provider 已含 `supportsBaseUrlOverride: true` 和 `baseUrlPresets` 列表（三端点），`route()` 已使用 provider 解析。
+- 复查 `desktop/settings.mjs`：`providerOverridesPath` / `readProviderOverrides` / `writeProviderOverrides` / `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride` 均已实现。
+- 复查 `desktop/renderer/app.js`：Kimi 卡片渲染 baseUrl 输入框 + 保存 + 恢复默认 + datalist 三端点 + 失焦校验，IPC 入口 `setProviderBaseUrl` / `resetProviderBaseUrl` 已 wire 完毕。
+- 复查 `README.md`：「Moonshot / Kimi Endpoints / 端点」中英小节存在，三端点列出 + Anthropic 兼容端点暂不支持提示。
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护）。
+- `npm run check`：**241/241 通过**，0 失败、0 跳过、0 取消（duration 720ms）。
+
+**结论**：issue #1 全部完成且仓库状态健康。本 session 无新功能任务；TASKS.md 33 个 checkbox 已全部 checked，保持原状。
+
+<!-- Agent-3: session 7 verified clean state at 2026-06-26 01:49 -->
