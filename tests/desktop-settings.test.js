@@ -1651,6 +1651,26 @@ test("applyCodexConfig emits distinct backup filenames for back-to-back calls", 
   }
 });
 
+test("provider-overrides.json is gitignored", async () => {
+  // Regression: Agent-2 session 47 flagged that config/provider-overrides.json was
+  // not covered by .gitignore, so users who saved an endpoint override via the
+  // desktop UI could accidentally commit it on the next git add -A. Verify it
+  // (and sibling secrets) are all matched by .gitignore rules.
+  const { execSync } = await import("node:child_process");
+  const stdout = execSync(
+    'git check-ignore -v config/router.config.json config/provider-overrides.json config/secrets.local.json',
+    { encoding: "utf8" },
+  );
+  const lines = stdout.trim().split("\n");
+  assert.equal(lines.length, 3, `expected 3 ignored paths, got ${lines.length}: ${stdout}`);
+  for (const line of lines) {
+    assert.match(line, /^\.gitignore:\d+:config\//, `unexpected line: ${line}`);
+  }
+  assert.match(stdout, /config\/router\.config\.json/);
+  assert.match(stdout, /config\/provider-overrides\.json/);
+  assert.match(stdout, /config\/secrets\.local\.json/);
+});
+
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-test-"));
 }
