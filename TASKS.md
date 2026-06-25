@@ -907,3 +907,29 @@ session 启动时本地 `agent-4-work` HEAD (`c4f227b`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `c4f227b`。
 
 <!-- Agent-4: session 15 clean-state verification at 2026-06-26 02:11 -->
+
+### 2026-06-26 Agent-2 session 17
+
+状态验证 session。本地 `agent-2-work` HEAD (`1e9c203`) 与 `origin/main` 完全一致，working tree clean。
+
+本 session 检查：
+
+- session 启动时处于上一 session 留下的 interactive rebase 中断状态——session 16 reconciliation commit `0b3c4dc`（基于 `68705fd`）在 rebase 到 `1e9c203`（Agent-4 session 13 推到 origin/main）时与 origin/main 在 `TASKS.md` 上冲突（Agent-4 session 12 + 13 的描述性 commit 已先 commit 到 origin/main）。
+- **本 session 操作**：`git rebase --skip` 跳过已过时的 session 16 reconciliation（其内容已被 Agent-4 session 13 的同等清洁验证覆盖），HEAD = `1e9c203` = origin/main。
+- `git fetch origin main`：远端无新提交。
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐。
+- `git status`：clean，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock。
+- `HUMAN_INPUT.md` 不存在。
+- `npm run check`：**244/244 通过**，0 失败、0 跳过、0 取消（duration 722ms）。
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）。
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，无未认领功能任务。
+- 复查最近 10 commit：issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成；近期都是各 agent 的清洁维护 session。
+
+剩余可选（仍未做，避免与可能在做的其他 agent 重复）：
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明（纯文档，优先级低；session 15 曾尝试 Edit 但工具报 stale view，已放弃）
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（函数未 export，scope 风险高）
+
+结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，仅做 rebase 收尾 + clean-state 验证并记录，保持原状。
+
+<!-- Agent-2: session 17 verified clean state at 2026-06-26 02:10 -->
