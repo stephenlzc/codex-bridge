@@ -13,13 +13,16 @@ import {
   buildCodexToml,
   detectModeFromConfig,
   ensureRouterConfig,
+  getProviderBaseUrl,
   loadDesktopOptions,
-  providerCatalog,
   prepareRouterStartConfig,
+  providerCatalog,
+  readProviderOverrides,
   readRouterConfig,
   readCustomModels,
   recoverCodexHistoryAccess,
   removeCustomModel,
+  resetProviderBaseUrlOverride,
   restoreCodexConfig,
   routerConfigPath,
   routerConfigDiagnostics,
@@ -33,6 +36,7 @@ import {
   saveSecrets,
   secretValue,
   secretStatus,
+  setProviderBaseUrlOverride,
   supportDiagnostics,
   syncCodexBridgeConversationProviders,
   writeRouterConfigFromSelection,
@@ -1462,6 +1466,154 @@ test("syncCodexBridgeConversationProviders marks existing OpenAI user threads as
   assert.equal(repaired.model_provider, "openai");
   assert.equal(repaired.has_user_event, 1);
   assert.equal(empty.has_user_event, 0);
+});
+
+test("getProviderBaseUrl returns built-in baseUrl when no override exists", () => {
+  const rootDir = makeTempProject();
+  assert.equal(
+    getProviderBaseUrl(rootDir, "kimi"),
+    "https://api.moonshot.cn/v1",
+  );
+  assert.equal(getProviderBaseUrl(rootDir, "deepseek"), "https://api.deepseek.com/v1");
+});
+
+test("getProviderBaseUrl returns empty string for unknown provider", () => {
+  const rootDir = makeTempProject();
+  assert.equal(getProviderBaseUrl(rootDir, ""), "");
+  assert.equal(getProviderBaseUrl(rootDir, "not-a-provider"), "");
+});
+
+test("setProviderBaseUrlOverride persists an override and getProviderBaseUrl returns it", () => {
+  const rootDir = makeTempProject();
+  const result = setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+  assert.deepEqual(result, { providerId: "kimi", baseUrl: "https://api.moonshot.ai/v1" });
+  assert.equal(getProviderBaseUrl(rootDir, "kimi"), "https://api.moonshot.ai/v1");
+
+  const stored = JSON.parse(fs.readFileSync(path.join(rootDir, "config", "provider-overrides.json"), "utf8"));
+  assert.equal(stored.version, 1);
+  assert.equal(stored.providers.kimi.baseUrl, "https://api.moonshot.ai/v1");
+});
+
+test("setProviderBaseUrlOverride trims trailing slashes and validates http(s)", () => {
+  const rootDir = makeTempProject();
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.kimi.com/coding/v1/");
+  assert.equal(getProviderBaseUrl(rootDir, "kimi"), "https://api.kimi.com/coding/v1");
+
+  assert.throws(
+    () => setProviderBaseUrlOverride(rootDir, "kimi", ""),
+    /Base URL cannot be empty/,
+  );
+  assert.throws(
+    () => setProviderBaseUrlOverride(rootDir, "kimi", "not-a-url"),
+    /valid http\(s\) URL/,
+  );
+  assert.throws(
+    () => setProviderBaseUrlOverride(rootDir, "kimi", "ftp://example.com/v1"),
+    /valid http\(s\) URL/,
+  );
+  assert.throws(
+    () => setProviderBaseUrlOverride(rootDir, "", "https://api.moonshot.cn/v1"),
+    /Provider id is required/,
+  );
+});
+
+test("setProviderBaseUrlOverride only affects the targeted provider", () => {
+  const rootDir = makeTempProject();
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+  assert.equal(getProviderBaseUrl(rootDir, "deepseek"), "https://api.deepseek.com/v1");
+  assert.equal(getProviderBaseUrl(rootDir, "openai"), "https://api.openai.com/v1");
+});
+
+test("resetProviderBaseUrlOverride clears the override and returns built-in baseUrl", () => {
+  const rootDir = makeTempProject();
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+  assert.equal(getProviderBaseUrl(rootDir, "kimi"), "https://api.moonshot.ai/v1");
+
+  const result = resetProviderBaseUrlOverride(rootDir, "kimi");
+  assert.deepEqual(result, {
+    providerId: "kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+  });
+  assert.equal(getProviderBaseUrl(rootDir, "kimi"), "https://api.moonshot.cn/v1");
+});
+
+test("resetProviderBaseUrlOverride is a no-op when no override exists", () => {
+  const rootDir = makeTempProject();
+  const result = resetProviderBaseUrlOverride(rootDir, "kimi");
+  assert.equal(result.baseUrl, "https://api.moonshot.cn/v1");
+  assert.equal(getProviderBaseUrl(rootDir, "kimi"), "https://api.moonshot.cn/v1");
+});
+
+test("readProviderOverrides ignores invalid entries and trims trailing slashes", () => {
+  const rootDir = makeTempProject();
+  const target = path.join(rootDir, "config", "provider-overrides.json");
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(
+    target,
+    JSON.stringify({
+      version: 1,
+      providers: {
+        kimi: { baseUrl: "https://api.kimi.com/coding/v1/" },
+        deepseek: { baseUrl: "not-a-url" },
+        bad: { baseUrl: "ftp://x.example.com/v1" },
+        missing: { baseUrl: "" },
+      },
+    }),
+    "utf8",
+  );
+
+  const overrides = readProviderOverrides(rootDir);
+  assert.deepEqual(Object.keys(overrides), ["kimi"]);
+  assert.equal(overrides.kimi.baseUrl, "https://api.kimi.com/coding/v1");
+});
+
+test("providerCatalog applies baseUrlOverride to built-in providers", () => {
+  const rootDir = makeTempProject();
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+  const kimi = providerCatalog(rootDir).find((provider) => provider.id === "kimi");
+  assert.equal(kimi.baseUrl, "https://api.moonshot.ai/v1");
+  assert.equal(kimi.baseUrlOverride, "https://api.moonshot.ai/v1");
+
+  const deepseek = providerCatalog(rootDir).find((provider) => provider.id === "deepseek");
+  assert.equal(deepseek.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(deepseek.baseUrlOverride, undefined);
+});
+
+test("buildRouterConfigFromSelection emits the overridden baseUrl for kimi routes", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, ["deepseek-v4-pro", "kimi-k2-7-code"], MODE_HYBRID);
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+  const kimiRoute = config.models.find((route) => route.model === "kimi-k2.7-code");
+  assert.equal(kimiRoute.baseUrl, "https://api.moonshot.ai/v1");
+});
+
+test("buildRouterConfigFromSelection falls back to built-in baseUrl after reset", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, ["deepseek-v4-pro", "kimi-k2-7-code"], MODE_HYBRID);
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.kimi.com/coding/v1");
+  resetProviderBaseUrlOverride(rootDir, "kimi");
+
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+  const kimiRoute = config.models.find((route) => route.model === "kimi-k2.7-code");
+  assert.equal(kimiRoute.baseUrl, "https://api.moonshot.cn/v1");
+});
+
+test("setProviderBaseUrlOverride refreshes existing router config baseUrl in place", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, ["deepseek-v4-pro", "kimi-k2-7-code"], MODE_HYBRID);
+  writeRouterConfigFromSelection(rootDir, MODE_HYBRID);
+  const original = JSON.parse(fs.readFileSync(routerConfigPath(rootDir), "utf8"));
+  const kimiBefore = original.models.find((route) => route.model === "kimi-k2.7-code");
+  assert.equal(kimiBefore.baseUrl, "https://api.moonshot.cn/v1");
+
+  setProviderBaseUrlOverride(rootDir, "kimi", "https://api.moonshot.ai/v1");
+  const updated = JSON.parse(fs.readFileSync(routerConfigPath(rootDir), "utf8"));
+  const kimiAfter = updated.models.find((route) => route.model === "kimi-k2.7-code");
+  assert.equal(kimiAfter.baseUrl, "https://api.moonshot.ai/v1");
+  assert.equal(updated.mode, original.mode);
+  assert.equal(updated.port, original.port);
 });
 
 function makeTempProject() {
