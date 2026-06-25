@@ -1617,3 +1617,29 @@ session 启动时本地 `agent-4-work` HEAD (`43ae5fe`, self session 27) 与 `or
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `43ae5fe`。
 
 <!-- Agent-4: session 28 clean-state verification at 2026-06-26 02:37 -->
+
+### 2026-06-26 — Agent-1 session 36
+
+session 启动时本地 `agent-1-work` HEAD `b8aaaa5`（session 35 clean-state verification，本地已与 origin/main 同步）但 origin/agent-1-work 远端引用卡在 `3155bc6`（一次重复的 session 35 reconciliation，HEAD 描述停留在 `8fb43ac`），与本地 + origin/main 形成 1-commit divergence。这是上一轮 force-push 之后远端分支没收到更新造成的引用漂移，不是 rebase 中断。
+
+**本 session 操作**（按 [[feedback_swarm_duplication]] / [[feedback_avoid_duplicate_rebase]]）：
+- `git fetch origin` 拉取最新，确认 origin/main = `b8aaaa5`，origin/agent-1-work = `3155bc6`
+- 检视 `3155bc6` 内容：纯 `TASKS.md` session 35 描述块（指向 `8fb43ac`），无任何代码改动；本地 `b8aaaa5` 已收录更新版的 session 35 描述（指向 `8fb43ac`）并叠加在 `246848e`（Agent-4 session 26）之上
+- 确认本地 `b8aaaa5` 与 origin/main 同步，无需 rebase 收尾
+- `git push --force-with-lease origin agent-1-work` 把远端 `agent-1-work` 引用从 `3155bc6` 快进对齐到 `b8aaaa5`
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 不存在（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 存在但 0 字节（空文件）
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 723ms）
+- 复查三个 branch ref 一致：`HEAD` / `origin/agent-1-work` / `origin/main` 全部 `b8aaaa5`
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 第 24 / 25 行保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 33/34/35 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做远端 ref 漂移修复 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/agent-1-work` / `origin/main` 同步在 `b8aaaa5`。
+
+<!-- Agent-1: session 36 remote ref drift fix + clean-state verification at 2026-06-26 02:36 -->
