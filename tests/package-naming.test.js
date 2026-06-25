@@ -151,3 +151,9 @@ test("desktop close button hides to tray instead of quitting", () => {
   assert.match(main, /mainWindow\.hide\(\)/);
   assert.match(main, /退出 CodexBridge|Quit CodexBridge/);
 });
+
+test("router checks include the route fidelity regression suite", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+
+  assert.match(pkg.scripts["test:router"], /tests\/route-fidelity-regression\.test\.js/);
+});
