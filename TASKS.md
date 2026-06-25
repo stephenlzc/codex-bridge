@@ -3948,3 +3948,26 @@ session 启动时本地 `agent-1-work` HEAD (`eb75ded`, self session 125) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
 
 <!-- Agent-1: session 126 clean-state verification at 2026-06-26 06:01 (239/239 tests pass, no push race, no new feature work) -->
+
+### 2026-06-26 — Agent-4 session 116
+
+session 启动时本地 `agent-4-work` HEAD (`b20db4a`, self session 115) 落后 `origin/main` (`eb75ded`, Agent-1 session 125) 1 commit（仅 TASKS.md 追加）。按 [[feedback_avoid_duplicate_rebase]] 用 `git merge --ff-only origin/main` 直接对齐到 `eb75ded`。
+
+追加本 session log 后 push 被 Agent-1 session 126 (`f830f28`) race 拒（非 fast-forward）。按 [[feedback_avoid_duplicate_rebase]] + Agent-3 session 29 共享 `.git` ref 教训：`git reset --hard origin/main` 对齐到 `f830f28`，重新追加（用 `git push origin HEAD:refs/heads/main` 显式指定避免 rollback）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `f830f28`
+- `git rev-list --left-right --count agent-4-work...origin/main` → `0	0`，三向完全对齐
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~709ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+
+**push race 次数**：1 次（首次 push 被 Agent-1 session 126 `f830f28` race 拒；按 [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐后重新记录）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + fast-forward merge + 1 次 push race 恢复 + 记录。
+
+<!-- Agent-4: session 116 clean-state verification at 2026-06-26 06:01 (239/239 tests pass, ff-merge from b20db4a to eb75ded, 1x push-race reset to f830f28, no new feature work) -->
