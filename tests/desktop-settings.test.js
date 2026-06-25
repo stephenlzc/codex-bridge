@@ -1616,6 +1616,43 @@ test("setProviderBaseUrlOverride refreshes existing router config baseUrl in pla
   assert.equal(updated.port, original.port);
 });
 
+test("applyCodexConfig emits distinct backup filenames for back-to-back calls", () => {
+  // Regression: timestamp() previously returned identical strings when two calls
+  // landed in the same millisecond, causing fs.copyFileSync to silently overwrite
+  // the prior backup. The fix added a monotonic counter to timestamp(); verify
+  // six alternating-mode calls in quick succession all produce distinct filenames
+  // and that each filename ends with a 3-digit counter suffix.
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(target, 'model = "seed"\n', "utf8");
+
+  const backups = [];
+  for (let i = 0; i < 6; i += 1) {
+    // Overwrite target with a fresh seed before each call so applyCodexConfig
+    // sees a different existingContent and always creates a backup.
+    fs.writeFileSync(target, `model = "seed-${i}"\n`, "utf8");
+    const result = applyCodexConfig({
+      rootDir,
+      mode: i % 2 === 0 ? MODE_HYBRID : MODE_ALL_API,
+      homeDir,
+    });
+    assert.notEqual(result.backup, null, `call ${i} should have created a backup`);
+    backups.push(result.backup);
+  }
+
+  const unique = new Set(backups);
+  assert.equal(unique.size, backups.length, `backups must all be distinct, got: ${backups.join(", ")}`);
+
+  const counterPattern = /\.codexbridge\.\d{4}-\d{2}-\d{2}-\d{6,}-\d{3}\.bak$/;
+  for (const backup of backups) {
+    assert.match(backup, counterPattern, `backup ${backup} should match the timestamp+counter pattern`);
+    assert.equal(fs.existsSync(backup), true, `backup ${backup} must exist on disk`);
+  }
+});
+
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-test-"));
 }
