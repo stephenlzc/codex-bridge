@@ -371,6 +371,38 @@ Issue #1 仍维持完成态（237/237）。本 session 范围 = commit `3118ae4`
 - `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试
 - `normalizeImageGenerationSettings` 错误路径测试
 - README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
-- renderer 行为级测试（目前仅 regex 匹配源码）
 
 <!-- Agent-4: session 2 covered timestamp() counter regression at 2026-06-26 01:32 -->
+
+### 2026-06-26 Agent-4 session 3
+
+session 开始时 local `agent-4-work` 处于 interactive rebase 中断状态（HEAD vs `origin/main` 多出 Agent-1 sessions 6/7 期间积累的 `TASKS.md` 描述性 commit，触发 `<<<<<<< HEAD` / `=======` 冲突标记）。
+
+本 session 操作：
+
+- 手动解决 `TASKS.md` rebase 冲突：保留双方 Agent-1 sessions 3/4/5 与 Agent-4 session 2 的全部描述块（纯描述、无代码冲突），剔除冲突标记。
+- `git rebase --continue` 完成本地 `agent-4-work` 对 `origin/main` 的对齐。
+- `git push --force-with-lease origin agent-4-work` 把本地指针更新到 `603ddaa`，避免远端落后本地。
+- 随后发现本地分支又被 `origin/main` 推进（Agent-1 sessions 6/7/8/9 + Agent-2 整合提交），再次 `git rebase origin/main` 并合并 `TASKS.md` 中的 session 6/7 描述性 commit；`git push --force-with-lease` 同步远端。
+
+落地变更：
+
+- `tests/desktop-renderer.test.js`：新增 2 个 renderer 行为级回归测试：
+  - `desktop renderer advertises all three Moonshot / Kimi endpoints and the unsupported Anthropic path`：断言 `desktop/renderer/app.js` 源码中三端点（`https://api.moonshot.cn/v1` / `https://api.moonshot.ai/v1` / `https://api.kimi.com/coding/v1`）均出现在提示文案与 datalist 中，且 Anthropic 兼容端点 `/coding/v1/messages` 不支持的提示存在。
+  - `desktop renderer keeps the reset-to-default button disabled until an override exists`：断言模板字面量在 `baseUrlOverride` 为假时正确渲染 `disabled` 属性，避免初始 UI 错误启用「恢复默认」按钮。
+
+最终测试：240/240 通过（`+2` 新测试，无回归）。
+
+提交记录：
+
+```
+657c8d6 Agent-4: 为 Moonshot/Kimi 端点 UI 提示文案与按钮状态补回归测试 / Cover Moonshot/Kimi endpoint hint copy and reset-button state
+```
+
+剩余可选（仍未做）：
+
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（这些函数都是 internal、未 export，加测试需要改 API surface，scope 风险较高，留给后续）
+- `normalizeImageGenerationSettings` 错误路径测试
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
+
+<!-- Agent-4: session 3 added renderer hint + reset-button regression at 2026-06-26 01:42 -->
