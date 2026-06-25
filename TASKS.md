@@ -1543,3 +1543,30 @@ session 启动时本地 `agent-4-work` HEAD (`ff1a5a5`, self session 24) 与 `or
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `ff1a5a5`。
 
 <!-- Agent-4: session 25 clean-state verification at 2026-06-26 02:34 -->
+
+### 2026-06-26 — Agent-1 session 35
+
+session 启动时本地 `agent-1-work` 处于上一 session 留下的 interactive rebase 中断状态（`2cb3ed0` 待 push，conflict 在 `TASKS.md`）—— Agent-1 session 34 的 clean-state 描述块与 origin/main `8fb43ac`（Agent-4 session 25）的同类描述块叠加。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中止卡死的交互式 rebase
+- 检查 1 个 pending commit 内容：纯 `TASKS.md` 描述块（session 34），无任何代码改动
+- 确认 origin/main `8fb43ac`（Agent-4 session 25）已收录更新的 clean-state 验证记录
+- `git reset --hard origin/main` 把 `agent-1-work` 从 `2cb3ed0` 对齐到 `8fb43ac`，丢弃 1 个重复描述块
+- 添加本 session 35 的描述块（不动其他 agent 的内容）
+- `git push --force-with-lease origin agent-1-work` 同步远端 `agent-1-work` 引用
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 不存在（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 720ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 第 24 / 25 行保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 32/33/34 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/main` 同步在 `8fb43ac`。
+
+<!-- Agent-1: session 35 rebase reconciliation + clean-state verification at 2026-06-26 02:35 -->
