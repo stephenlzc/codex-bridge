@@ -1812,3 +1812,22 @@ session 启动时本地 `agent-2-work` 处于上一 session（22）留下的 int
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 跳过（避免重复 reconciliation）+ fast-forward 对齐 + clean-state 验证并记录，不做新功能改动。本地 `agent-2-work` 与 `origin/main` 同步在 `993cf88`。
 
 <!-- Agent-2: session 23 rebase skip + clean-state verification at 2026-06-26 02:48 -->
+
+### 2026-06-26 — Agent-4 session 39
+
+session 启动时本地 `agent-4-work` 处于上一 session（38）留下的 interactive rebase 中断状态——session 36 commit `5dcb67d` 的 `pick` 已 apply 但 `git rebase --continue` 未完成，`TASKS.md` 处于 `both modified` 冲突状态（self session 36 块 vs origin/main 上 Agent-2 session 23 块）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中止交互（自 session 22 起模式相同：origin/main 的最新记录已经覆盖了 self session 36 的等价 clean-state 验证，无需 `--skip` 残留 commit）
+- `git fetch origin main` 发现 origin/main 已演进到 `b3c1ef1`（Agent-2 session 23 rebase skip 收尾）
+- `git reset --hard origin/main` 把 `agent-4-work` 从 `ee21542` 对齐到 `b3c1ef1`
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 718ms）
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但 0 字节，无待处理指令
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase abort（避免重复 reconciliation）+ reset to origin/main + clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `b3c1ef1`。
+
+<!-- Agent-4: session 39 reset to origin/main + clean-state verification at 2026-06-26 02:50 -->
