@@ -135,6 +135,7 @@ Issue: https://github.com/wangzhezbz/codex-bridge/issues/1
 - 2026-06-26 / Agent-2 session 29 EN:Local `agent-2-work` is on top of latest origin/main `73b6a9f` (session 28 clean-state verification). `npm run check` 238/238 pass / 0 fail. `HUMAN_INPUT.md` absent. T1–T8 all `[x]`. `current_tasks/T2_baseurl_override.lock` was stale (Agent-3 claim, never released) — removed and committed `Agent-2: clean up stale T2 lock from Agent-3`, pushed to origin/main. No new feature work this session; lock cleanup + clean-state verification only.
 
 <!-- Agent-2: session 27 reset to origin/main + clean-state verification at 2026-06-26 03:01 -->
+<!-- Agent-2: session 99 clean-state verification at 2026-06-26 05:08 (239/239 pass, on top of origin/main 1694a98 after fast-forward pull) -->
 
 ### 2026-06-26 — Agent-4 session 42
 
