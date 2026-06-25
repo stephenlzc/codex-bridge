@@ -2,6 +2,16 @@ import { fetchInitWithProxy, proxyLogLabel } from "../src/proxy.js";
 
 export const GITHUB_LATEST_RELEASE_URL =
   "https://api.github.com/repos/wangzhezbz/codex-bridge/releases/latest";
+export const GITHUB_LATEST_RELEASE_PAGE_URL =
+  "https://github.com/wangzhezbz/codex-bridge/releases/latest";
+export const GITHUB_LATEST_DOWNLOAD_BASE_URL =
+  "https://github.com/wangzhezbz/codex-bridge/releases/latest/download";
+
+const RELEASE_ASSET_NAMES = [
+  "CodexBridge-Windows-x64-Portable.zip",
+  "CodexBridge-macOS-arm64-Portable.zip",
+  "CodexBridge-macOS-x64-Portable.zip",
+];
 
 export function assetNameForPlatform(platform = process.platform, arch = process.arch) {
   if (platform === "win32" && arch === "x64") {
@@ -88,20 +98,108 @@ export function planReleaseUpdate({
 export async function fetchLatestRelease({
   fetchImpl = globalThis.fetch,
   releaseUrl = GITHUB_LATEST_RELEASE_URL,
+  latestReleasePageUrl = GITHUB_LATEST_RELEASE_PAGE_URL,
 } = {}) {
   if (typeof fetchImpl !== "function") {
     throw new Error("当前运行环境没有可用的 fetch，无法检查更新。");
   }
-  const response = await fetchImpl(releaseUrl, fetchInitWithProxy(releaseUrl, {
+  return fetchLatestReleaseWithFallback({ fetchImpl, releaseUrl, latestReleasePageUrl });
+}
+
+async function fetchLatestReleaseWithFallback({
+  fetchImpl,
+  releaseUrl,
+  latestReleasePageUrl,
+}) {
+  let apiError = null;
+  try {
+    const response = await fetchImpl(releaseUrl, fetchInitWithProxy(releaseUrl, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "CodexBridge",
+      },
+    }));
+    if (response.ok) {
+      return response.json();
+    }
+    apiError = new Error(`GitHub API returned HTTP ${response.status}`);
+  } catch (error) {
+    apiError = error;
+  }
+
+  try {
+    return await fetchLatestReleaseFromLatestPage({ fetchImpl, latestReleasePageUrl });
+  } catch (fallbackError) {
+    throw new Error(
+      `检查更新失败：${apiError?.message || "GitHub API unavailable"}; releases/latest fallback failed: ${fallbackError.message}`,
+    );
+  }
+}
+
+async function fetchLatestReleaseFromLatestPage({
+  fetchImpl,
+  latestReleasePageUrl,
+}) {
+  const response = await fetchImpl(latestReleasePageUrl, fetchInitWithProxy(latestReleasePageUrl, {
+    redirect: "manual",
     headers: {
-      accept: "application/vnd.github+json",
+      accept: "text/html,*/*",
       "user-agent": "CodexBridge",
     },
   }));
-  if (!response.ok) {
-    throw new Error(`检查更新失败：GitHub 返回 HTTP ${response.status}`);
+
+  let latestTag = releaseTagFromLatestResponse(response, latestReleasePageUrl);
+  if (!latestTag && response.ok && typeof response.text === "function") {
+    latestTag = releaseTagFromText(await response.text());
   }
-  return response.json();
+  if (!latestTag) {
+    throw new Error(`could not resolve latest release tag from HTTP ${response.status}`);
+  }
+  return releaseFromLatestTag(latestTag);
+}
+
+function releaseTagFromLatestResponse(response, baseUrl) {
+  const candidates = [
+    response?.headers?.get?.("location"),
+    response?.url,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const tag = releaseTagFromUrl(candidate, baseUrl);
+    if (tag) {
+      return tag;
+    }
+  }
+  return "";
+}
+
+function releaseTagFromUrl(value, baseUrl) {
+  try {
+    const url = new URL(value, baseUrl);
+    const match = url.pathname.match(/\/releases\/tag\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  } catch {
+    return "";
+  }
+}
+
+function releaseTagFromText(value) {
+  const match = String(value || "").match(/\/releases\/tag\/(v?[0-9][0-9A-Za-z._-]*)/);
+  return match ? match[1] : "";
+}
+
+function releaseFromLatestTag(tag) {
+  const latestTag = String(tag || "").trim();
+  return {
+    tag_name: latestTag,
+    name: latestTag,
+    html_url: `https://github.com/wangzhezbz/codex-bridge/releases/tag/${latestTag}`,
+    body: "GitHub API unavailable; latest release was resolved from releases/latest.",
+    assets: RELEASE_ASSET_NAMES.map((name) => ({
+      name,
+      size: 0,
+      browser_download_url: `${GITHUB_LATEST_DOWNLOAD_BASE_URL}/${name}`,
+    })),
+  };
 }
 
 export function fetchInitForUpdateDownload(targetUrl, init = {}) {
@@ -130,6 +228,7 @@ $EXE_NAME = ${psQuote(exeName)}
 $WORK_DIR = ${psQuote(workDir)}
 $LOG_PATH = ${psQuote(logPath)}
 $backupDir = $null
+$updateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
 function Write-UpdateLog([string]$Message) {
   $dir = Split-Path -Parent $LOG_PATH
@@ -313,6 +412,44 @@ function Assert-CodexBridgeAppDir([string]$AppDir) {
   }
 }
 
+function Restore-PreviousAppDirectory() {
+  if (-not $backupDir -or -not (Test-Path -LiteralPath $backupDir)) {
+    Write-UpdateLog "No previous app directory backup was available to restore."
+    return $false
+  }
+
+  $appParent = Split-Path -Parent $CURRENT_APP_DIR
+  $appLeaf = Split-Path -Leaf $CURRENT_APP_DIR
+
+  if (Test-Path -LiteralPath $CURRENT_APP_DIR) {
+    $failedLeaf = "$appLeaf.failed-update-$updateStamp"
+    Write-UpdateLog "Preserving failed app directory as $failedLeaf."
+    Invoke-UpdateStep "Preserving failed app directory" {
+      Rename-Item -LiteralPath $CURRENT_APP_DIR -NewName $failedLeaf
+    }
+  }
+
+  Write-UpdateLog "Restoring previous app directory from $backupDir."
+  Invoke-UpdateStep "Restoring previous app directory" {
+    Rename-Item -LiteralPath $backupDir -NewName $appLeaf
+  }
+  return $true
+}
+
+function Start-CodexBridgeAfterFailure() {
+  $exePath = Join-Path $CURRENT_APP_DIR $EXE_NAME
+  if (-not (Test-Path -LiteralPath $exePath)) {
+    Write-UpdateLog "Could not restart CodexBridge after failed update; executable missing: $exePath"
+    return
+  }
+  try {
+    Write-UpdateLog "Restarting CodexBridge after failed update: $exePath"
+    Start-Process -FilePath $exePath -WorkingDirectory $CURRENT_APP_DIR
+  } catch {
+    Write-UpdateLog ("Could not restart CodexBridge after failed update: " + $_.Exception.Message)
+  }
+}
+
 try {
   Write-UpdateLog "Updater script started."
   Write-UpdateLog "Current app directory: $CURRENT_APP_DIR"
@@ -325,7 +462,7 @@ try {
   Wait-AppDirectoryProcessesExit $CURRENT_APP_DIR
 
   New-Item -ItemType Directory -Force -Path $WORK_DIR | Out-Null
-  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  $stamp = $updateStamp
   $appParent = Split-Path -Parent $CURRENT_APP_DIR
   $appLeaf = Split-Path -Leaf $CURRENT_APP_DIR
   $backupLeaf = "$appLeaf.previous-$stamp"
@@ -354,7 +491,7 @@ try {
   Assert-CodexBridgeAppDir $CURRENT_APP_DIR
   Write-UpdateLog "Starting updated CodexBridge: $nextExe"
   $startedProcess = Start-Process -FilePath $nextExe -ArgumentList "--updated" -WorkingDirectory $CURRENT_APP_DIR -PassThru
-  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 8
   if (-not (Get-Process -Id $startedProcess.Id -ErrorAction SilentlyContinue)) {
     throw "Updated CodexBridge exited immediately after launch: $nextExe"
   }
@@ -362,14 +499,9 @@ try {
 } catch {
   $failureMessage = $_.Exception.Message
   Write-UpdateLog ("Update failed: " + $failureMessage)
-  $appParent = Split-Path -Parent $CURRENT_APP_DIR
-  $appLeaf = Split-Path -Leaf $CURRENT_APP_DIR
-  if ($backupDir -and (Test-Path -LiteralPath $backupDir) -and -not (Test-Path -LiteralPath $CURRENT_APP_DIR)) {
-    Invoke-UpdateStep "Restoring previous app directory" {
-      Rename-Item -LiteralPath $backupDir -NewName $appLeaf
-    }
-  }
-  Write-UpdateLog "Update failed; old app directory was restored and left closed."
+  Restore-PreviousAppDirectory | Out-Null
+  Write-UpdateLog "Update failed; previous app was restored and restarted when possible."
+  Start-CodexBridgeAfterFailure
   Open-UpdateFolder
   Show-UpdateFailure $failureMessage
 }

@@ -135,6 +135,49 @@ test("updater release checks use configured proxy settings", async () => {
   }
 });
 
+test("updater falls back to GitHub latest redirect when release API is rate limited", async () => {
+  const seenUrls = [];
+
+  const latest = await fetchLatestRelease({
+    releaseUrl: "https://api.github.com/repos/wangzhezbz/codex-bridge/releases/latest",
+    fetchImpl: async (url, init) => {
+      seenUrls.push(String(url));
+      if (seenUrls.length === 1) {
+        return new Response("rate limited", { status: 403 });
+      }
+
+      assert.equal(init.redirect, "manual");
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://github.com/wangzhezbz/codex-bridge/releases/tag/v0.1.94",
+        },
+      });
+    },
+  });
+
+  assert.deepEqual(seenUrls, [
+    "https://api.github.com/repos/wangzhezbz/codex-bridge/releases/latest",
+    "https://github.com/wangzhezbz/codex-bridge/releases/latest",
+  ]);
+  assert.equal(latest.tag_name, "v0.1.94");
+  assert.equal(
+    latest.assets.find((asset) => asset.name === "CodexBridge-Windows-x64-Portable.zip")
+      ?.browser_download_url,
+    "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip",
+  );
+
+  const plan = planReleaseUpdate({
+    currentVersion: "0.1.93",
+    platform: "win32",
+    arch: "x64",
+    release: latest,
+  });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.updateAvailable, true);
+  assert.equal(plan.latestVersion, "0.1.94");
+});
+
 test("Windows portable updater script replaces and restarts without batch deletion", () => {
   const script = generateWindowsPortableUpdateScript({
     parentPid: 1234,
@@ -166,8 +209,13 @@ test("Windows portable updater script replaces and restarts without batch deleti
   assert.match(script, /Invoke-UpdateStep "Moving new app directory into place"/);
   assert.match(script, /Show-UpdateFailure \$failureMessage/);
   assert.match(script, /Open-UpdateFolder/);
-  assert.match(script, /Update failed; old app directory was restored and left closed/);
-  assert.doesNotMatch(script, /Starting existing CodexBridge after failed update/);
+  assert.match(script, /function Restore-PreviousAppDirectory/);
+  assert.match(script, /function Start-CodexBridgeAfterFailure/);
+  assert.match(script, /Restore-PreviousAppDirectory/);
+  assert.match(script, /Start-CodexBridgeAfterFailure/);
+  assert.match(script, /Update failed; previous app was restored and restarted when possible/);
+  assert.match(script, /Start-Sleep -Seconds 8/);
+  assert.doesNotMatch(script, /Update failed; old app directory was restored and left closed/);
   assert.match(script, /resources\\app\\package\.json/);
   assert.match(script, /-ArgumentList "--updated"/);
   assert.match(script, /-WorkingDirectory \$CURRENT_APP_DIR -PassThru/);
