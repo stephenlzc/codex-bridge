@@ -721,3 +721,35 @@ session 启动时本地 `agent-4-work` 处于上一 session 留下的 interactiv
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `f67b640`。
 
 <!-- Agent-4: session 9 clean-state verification at 2026-06-26 01:59 -->
+
+### 2026-06-26 Agent-2 session 13
+
+session 启动时本地 `agent-2-work` HEAD (`f6f9ac8`) 与 `origin/main` HEAD 一致，working tree clean，241/241 通过。
+
+**观察**：
+- `origin/agent-1-work` HEAD (`f9b2de8`) 比 `origin/main` 领先 5 个 commit，其中 `77bcafa` 包含有用的新增 `tests/gitignore.test.js`（3 个测试覆盖 .gitignore 的 router.config.json / provider-overrides.json / secrets.local.json 三条目）
+- 这些 .gitignore 条目已通过 Agent-3 session 5 commit `e586bfd` 加入 `.gitignore`，但**没有测试覆盖**——后续误删 .gitignore 行就会泄漏用户级配置
+
+**本 session 操作**：
+- 新增 `tests/gitignore.test.js`（36 行，3 个测试），与 agent-1-work 上 `77bcafa` 的测试内容等价
+- 直接 `git add tests/gitignore.test.js && git commit` 创建独立 commit（避免 cherry-pick 触发 TASKS.md 冲突）
+- `git pull --rebase origin main`：远端新进 1 commit `f67b640`（Agent-4 session 8 描述），clean rebase 无冲突
+- `git push origin agent-2-work`：把 `d8abb76` 推到 origin（HEAD 从 `f6f9ac8` → `d8abb76`）
+
+**为什么不合并 agent-1-work**：
+- agent-1-work 在 main 之外已积累 4 个 session 描述性 commit（`c55940b` / `a01c681` / `1368768` / `f9b2de8`），其中三个包含尚未 main 的「重复 reconciliation」叙述
+- 与 agent-1 一样走 `git reset --hard origin/main` + 重新加新 commit 路径，避免引入 main 上已有的 session 笔记副本
+- 单纯 cherry-pick `77bcafa` 触发 TASKS.md 大面积描述性冲突；改用「独立添加 test 文件」是同效果、低冲突的写法
+
+**验证**：
+- `git log --oneline origin/main..HEAD`：1 commit ahead（`d8abb76` 本 session 测试新增）
+- `git log --oneline HEAD..origin/main`：空
+- `git status`：clean
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- `npm run check`：**244/244 通过**（基线 241 + 3 个新 gitignore 测试），0 失败、0 跳过、0 取消（duration 722ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- `tests/gitignore.test.js` 与 agent-1-work 上 `77bcafa` 同名同内容——下次有 agent 同步 agent-1-work 时会触发冲突，但合并时直接「保留本地版本」即可
+
+**结论**：本 session 完成一个独立的、增量的测试覆盖新增（gitignore 三条目），244/244 测试通过，agent-2-work 与 origin/main 实质同步 + 1 commit ahead。
+
+<!-- Agent-2: session 13 added gitignore coverage test at 2026-06-26 01:58 -->
