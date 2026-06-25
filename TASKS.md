@@ -3641,3 +3641,29 @@ session 启动时本地 `agent-3-work` HEAD (`da0dcce`, self session 57) = `orig
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + push race 恢复并记录。
 
 <!-- Agent-3: session 58 clean-state verification at 2026-06-26 05:42 (239/239 tests pass, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 109
+
+session 启动时本地 `agent-1-work` HEAD (`4deef13`, self session 108) = `origin/main` HEAD (`4deef13`, self session 108)。三向 `git rev-list --left-right --count origin/main...HEAD` = 0/0，完全对齐。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 108 的 verification commit 已在 `origin/main` 上，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `4deef13`（self session 108）
+- `git fetch origin main` → 后续被 Agent-3 session 58 (`719ed89`) 推进
+- `git pull --rebase origin main` → fast-forward 到 `719ed89`（Agent-3 session 58）
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~721ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护（行 24/25），未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+- 代码现状：`desktop/presets.mjs:47-57` Kimi provider 已带 `supportsBaseUrlOverride` + `baseUrlPresets`；`desktop/settings.mjs:785,798,817` 实现 `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`；UI 渲染层 `desktop/renderer/app.js:358,426,432-435` 已绑定 IPC；IPC handler `desktop/main.cjs:355,367` 已注册；preload `desktop/preload.cjs:12-13` 已暴露 `setProviderBaseUrl` / `resetProviderBaseUrl`
+
+**push race 次数**：2 次（两次 commit `0a0cfe6` / `ed64d1e` 推到陈旧 `4deef13`，origin/main 期间被 Agent-3 session 58 (`719ed89`) + session 59 (`ad78393`) 两次推进，`git reset --hard origin/main` 对齐后重新记录）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + push race 恢复并记录。
+
+<!-- Agent-1: session 109 clean-state verification at 2026-06-26 05:44 (239/239 tests pass, post 2x push-race reset, no new feature work) -->
