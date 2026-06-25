@@ -273,7 +273,7 @@ test("server stops runaway chat tool loops after repeated tool continuations", a
           {
             type: "function_call_output",
             call_id: firstCall.call_id,
-            output: "created file",
+            output: "same failing result",
           },
         ],
         tools,
@@ -295,7 +295,7 @@ test("server stops runaway chat tool loops after repeated tool continuations", a
           {
             type: "function_call_output",
             call_id: secondCall.call_id,
-            output: "deleted file",
+            output: "same failing result",
           },
         ],
         tools,
@@ -422,7 +422,7 @@ test("server stops chat tool loops when Codex sends full input without previous_
           {
             type: "function_call_output",
             call_id: firstCall.call_id,
-            output: "created file",
+            output: "same failing result",
           },
         ],
         tools,
@@ -445,13 +445,13 @@ test("server stops chat tool loops when Codex sends full input without previous_
           {
             type: "function_call_output",
             call_id: firstCall.call_id,
-            output: "created file",
+            output: "same failing result",
           },
           secondCall,
           {
             type: "function_call_output",
             call_id: secondCall.call_id,
-            output: "wrote joke",
+            output: "same failing result",
           },
         ],
         tools,
@@ -596,7 +596,7 @@ test("server times out hung upstream chat requests", async () => {
   }
 });
 
-test("server default chat tool guard stops after three consecutive tool calls", async () => {
+test("server default chat tool guard stops repeated no-progress tool calls", async () => {
   let upstreamCalls = 0;
   const upstream = http.createServer(async (req, res) => {
     assert.equal(req.url, "/v1/chat/completions");
@@ -697,7 +697,13 @@ test("server default chat tool guard stops after three consecutive tool calls", 
       body: JSON.stringify({
         model: "deepseek-v4-pro",
         previous_response_id: first.id,
-        input: [{ type: "function_call_output", call_id: firstCall.call_id, output: "one" }],
+        input: [
+          {
+            type: "function_call_output",
+            call_id: firstCall.call_id,
+            output: "same stalled result",
+          },
+        ],
         tools,
       }),
     });
@@ -713,7 +719,13 @@ test("server default chat tool guard stops after three consecutive tool calls", 
       body: JSON.stringify({
         model: "deepseek-v4-pro",
         previous_response_id: second.id,
-        input: [{ type: "function_call_output", call_id: secondCall.call_id, output: "two" }],
+        input: [
+          {
+            type: "function_call_output",
+            call_id: secondCall.call_id,
+            output: "same stalled result",
+          },
+        ],
         tools,
       }),
     });
@@ -729,7 +741,13 @@ test("server default chat tool guard stops after three consecutive tool calls", 
       body: JSON.stringify({
         model: "deepseek-v4-pro",
         previous_response_id: third.id,
-        input: [{ type: "function_call_output", call_id: thirdCall.call_id, output: "three" }],
+        input: [
+          {
+            type: "function_call_output",
+            call_id: thirdCall.call_id,
+            output: "same stalled result",
+          },
+        ],
         tools,
       }),
     });
@@ -885,6 +903,148 @@ test("server lets chat models continue distinct tool chains beyond the default l
       false,
     );
     assert.equal(final.output_text, "distinct chain done");
+    assert.equal(upstreamCalls, 5);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("server lets repeated chat tool calls continue while tool results change", async () => {
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/chat/completions");
+    upstreamCalls += 1;
+
+    res.writeHead(200, { "content-type": "application/json" });
+    if (upstreamCalls > 4) {
+      res.end(
+        JSON.stringify({
+          id: "chatcmpl_poll_done",
+          object: "chat.completion",
+          choices: [{ message: { role: "assistant", content: "polling done" } }],
+          usage: { prompt_tokens: 55, completion_tokens: 5, total_tokens: 60 },
+        }),
+      );
+      return;
+    }
+
+    res.end(
+      JSON.stringify({
+        id: `chatcmpl_poll_${upstreamCalls}`,
+        object: "chat.completion",
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: `call_poll_${upstreamCalls}`,
+                  type: "function",
+                  function: {
+                    name: "shell_command",
+                    arguments: JSON.stringify({
+                      command: "Get-Content status.txt",
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 45 + upstreamCalls, completion_tokens: 5, total_tokens: 50 + upstreamCalls },
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const upstreamUrl = serverUrl(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "deepseek-v4-pro",
+    models: [
+      {
+        id: "deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        api: "chat_completions",
+        baseUrl: `${upstreamUrl}/v1`,
+        model: "deepseek-v4-pro",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+  const baseUrl = serverUrl(router);
+  const tools = [
+    {
+      type: "function",
+      name: "shell_command",
+      description: "Run shell.",
+      parameters: {
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+      },
+    },
+  ];
+
+  try {
+    let previousResponseId = "";
+    let previousCall = null;
+    for (let step = 1; step <= 4; step += 1) {
+      const body = step === 1
+        ? { model: "deepseek-v4-pro", input: "poll until status is done", tools }
+        : {
+            model: "deepseek-v4-pro",
+            previous_response_id: previousResponseId,
+            input: [
+              {
+                type: "function_call_output",
+                call_id: previousCall.call_id,
+                output: `status changed ${step - 1}`,
+              },
+            ],
+            tools,
+          };
+      const response = await fetchJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer router-token",
+        },
+        body: JSON.stringify(body),
+      });
+      previousResponseId = response.id;
+      previousCall = response.output.find((item) => item.type === "function_call");
+      assert.ok(previousCall, `poll step ${step} should continue while results change`);
+      assert.doesNotMatch(response.output_text || "", /stopped.*tool loop/i);
+    }
+
+    const final = await fetchJson(`${baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-pro",
+        previous_response_id: previousResponseId,
+        input: [
+          {
+            type: "function_call_output",
+            call_id: previousCall.call_id,
+            output: "status changed 4",
+          },
+        ],
+        tools,
+      }),
+    });
+
+    assert.equal(final.output_text, "polling done");
     assert.equal(upstreamCalls, 5);
   } finally {
     await close(router);

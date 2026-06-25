@@ -33,6 +33,7 @@ const FAILURE_CACHE_FATAL_TTL_MS = 120_000;
 const FAILURE_CACHE_TRANSIENT_TTL_MS = 15_000;
 const DEFAULT_CHAT_TOOL_CONTINUATION_TURNS = 2;
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 300_000;
+const INVALID_JSON_VALUE = Symbol("invalid_json_value");
 
 const recentUpstreamFailures = new Map();
 
@@ -457,8 +458,16 @@ export async function proxyChatCompletions(
   );
   let localFallback = "";
   const toolCallSignatures = responseToolCallSignatures(response);
+  const toolResultSignatures = latestToolResultSignaturesFromInput(
+    requestBody?.messages ?? requestBody?.input,
+  );
   const repeatsPreviousToolCall = responseRepeatsPreviousToolCall(
     toolCallSignatures,
+    requestBody,
+    history,
+  );
+  const toolResultHasNoProgress = repeatedToolResultHasNoProgress(
+    toolResultSignatures,
     requestBody,
     history,
   );
@@ -468,6 +477,7 @@ export async function proxyChatCompletions(
       route,
       toolContinuationTurns,
       repeatsPreviousToolCall,
+      toolResultHasNoProgress,
     )
   ) {
     console.warn(
@@ -500,6 +510,7 @@ export async function proxyChatCompletions(
     toolCallSignatures: responseHasRunnableToolCall(response)
       ? toolCallSignatures
       : [],
+    toolResultSignatures,
     ...(localFallback ? { localFallback } : {}),
   });
 
@@ -564,11 +575,13 @@ function shouldStopChatToolContinuation(
   route,
   toolContinuationTurns,
   repeatsPreviousToolCall,
+  toolResultHasNoProgress,
 ) {
   return (
     toolContinuationTurns > maxChatToolContinuationTurns(route) &&
     responseHasRunnableToolCall(response) &&
-    repeatsPreviousToolCall
+    repeatsPreviousToolCall &&
+    toolResultHasNoProgress
   );
 }
 
@@ -597,6 +610,17 @@ function responseRepeatsPreviousToolCall(signatures, requestBody, history) {
   return sameStringArray(signatures, previousSignatures);
 }
 
+function repeatedToolResultHasNoProgress(signatures, requestBody, history) {
+  if (!Array.isArray(signatures) || signatures.length === 0) {
+    return false;
+  }
+  const previousMeta = history?.getResponseMeta?.(requestBody?.previous_response_id) || {};
+  const previousSignatures = Array.isArray(previousMeta.toolResultSignatures)
+    ? previousMeta.toolResultSignatures
+    : previousToolResultSignaturesFromInput(requestBody?.messages ?? requestBody?.input);
+  return sameStringArray(signatures, previousSignatures);
+}
+
 function latestToolCallSignaturesFromInput(input) {
   let latest = [];
   let currentGroup = [];
@@ -620,6 +644,36 @@ function responseToolCallSignatures(response) {
     .map((item) => toolCallSignature(item))
     .filter(Boolean)
     .sort();
+}
+
+function latestToolResultSignaturesFromInput(input) {
+  const groups = toolResultSignatureGroupsFromInput(input);
+  return groups.at(-1) || [];
+}
+
+function previousToolResultSignaturesFromInput(input) {
+  const groups = toolResultSignatureGroupsFromInput(input);
+  return groups.length >= 2 ? groups[groups.length - 2] : [];
+}
+
+function toolResultSignatureGroupsFromInput(input) {
+  const groups = [];
+  let currentGroup = [];
+  for (const item of responseInputItems(input)) {
+    const signature = toolResultSignature(item);
+    if (signature) {
+      currentGroup.push(signature);
+      continue;
+    }
+    if (currentGroup.length > 0) {
+      groups.push([...currentGroup].sort());
+      currentGroup = [];
+    }
+  }
+  if (currentGroup.length > 0) {
+    groups.push([...currentGroup].sort());
+  }
+  return groups;
 }
 
 function toolCallSignature(item) {
@@ -647,10 +701,38 @@ function toolCallSignature(item) {
 
 function canonicalToolArguments(value) {
   if (typeof value === "string") {
-    const parsed = tryParseJson(value, undefined);
-    return stringifyJson(parsed === undefined ? value : parsed);
+    const parsed = tryParseJson(value, INVALID_JSON_VALUE);
+    return stringifyJson(parsed === INVALID_JSON_VALUE ? value : parsed);
   }
   return stringifyJson(value ?? "");
+}
+
+function toolResultSignature(item) {
+  if (!item || typeof item !== "object" || !isResponseToolOutputItem(item)) {
+    return "";
+  }
+  return `${item.type || "tool_output"}:${canonicalToolResult(
+    item.output ?? item.result ?? item.content ?? "",
+  )}`;
+}
+
+function canonicalToolResult(value) {
+  if (typeof value === "string") {
+    const parsed = tryParseJson(value, INVALID_JSON_VALUE);
+    return boundedSignatureText(
+      parsed === INVALID_JSON_VALUE ? value : stableStringify(parsed),
+    );
+  }
+  return boundedSignatureText(stableStringify(value ?? ""));
+}
+
+function boundedSignatureText(value) {
+  const text = String(value ?? "");
+  if (text.length <= 2000) {
+    return text;
+  }
+  const digest = createHash("sha256").update(text).digest("hex");
+  return `${text.length}:${digest}`;
 }
 
 function sameStringArray(left, right) {
