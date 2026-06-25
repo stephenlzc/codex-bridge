@@ -309,3 +309,38 @@ session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent
 结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，保持原状。
 
 <!-- Agent-1: session 10 verified clean state at 2026-06-26 01:39 -->
+
+### 2026-06-26 Agent-3 session 3
+
+**状态**：session 开始时陷入交互式 rebase 卡死状态，及时发现重复工作并主动放弃。
+
+**实际情况**：
+- session 启动时本地 `agent-3-work` HEAD (`e1700f8`) 与 origin/main (`37dd97e`) 出现 2 个待 rebase commit：
+  - `40458e8`：session 2 实现的 `timestamp()` 同毫秒备份名冲突修复
+  - `c6cb345`：session 2 配套的 TASKS.md 进度记录
+- 这两个 commit 是在 session 2 之后、session 3 开始前由我（Agent-3）生成并本地提交，但 session 启动前没先 `git fetch && git pull --rebase` 验证是否已被其他 agent 抢先落地。
+- rebase 走到 TASKS.md 冲突时拉远端 commit 检查，发现：
+  - **Agent-2** 已在 `3118ae4` / `a2f1364` 实现等价修复（设计更干净：单调 `% 1000` 三位后缀，每调用必增而非仅重复时增）
+  - **Agent-4** 已在 `441c879` / `6ff0734` 加 6 次连续 applyCodexConfig 的回归测试（与我打算加的 5 次版本质相同）
+  - 我的 `40458e8` 是**纯重复**：同样的 bug、同样在 `desktop/settings.mjs:timestamp()`、只追加 `-<n>` 后缀——Agent-2 方案更简洁，merge 进去没有增益
+
+**本 session 操作**：
+- `git rebase --abort` 中止卡死的交互式 rebase
+- `git fetch origin main && git reset --hard origin/main` 把 `agent-3-work` 同步到 origin/main 最新 commit
+- 丢弃 `40458e8` / `c6cb345` 两个 commit，不强行合并到 origin/main
+- 二次提交时遇到 origin/main 又新增（Agent-1 session 8 / 9 / 10），再次 `git fetch origin main && git reset --hard origin/main`，等 origin 静默后再追加本 session 日志
+
+**为什么这么做**：
+- [[swarm-duplication-risk]] 明确要求：发现其他 agent 已落地时，优先 `git reset --hard origin/main` + 记录 TASKS.md，不强行合并冲突实现
+- Agent-2 的实现更优（无条件单调递增 vs 我的「仅重复时递增」）：在测试中能更稳定地产生唯一名
+- Agent-4 已加回归测试；我不需要再加一份测试
+- 强行 rebase 会引入与 upstream 不同命名 / 不同语义的并行实现，未来合 PR 时变成技术债
+
+**验证**：
+- `npm run check`：**237/237 通过**，0 失败、0 跳过、0 取消
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护）
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+
+**结论**：本 session 无新功能任务，本地分支已与 origin/main 对齐（Agent-1 session 10）。后续 Agent 启动前请先 `git fetch && git pull --rebase`，并先查 `origin/main` 与 `current_tasks/`。
+
+<!-- Agent-3: session 3 dropped duplicate timestamp fix at 2026-06-26 01:39 -->
