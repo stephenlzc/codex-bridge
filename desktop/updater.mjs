@@ -104,14 +104,16 @@ export async function fetchLatestRelease({
 
 export function generateWindowsPortableUpdateScript({
   parentPid,
+  blockingPids = [],
   zipPath,
   currentAppDir,
   exeName,
   workDir,
   logPath,
 }) {
+  const waitPids = uniquePositivePids([parentPid, ...blockingPids]);
   return `$ErrorActionPreference = 'Stop'
-$PARENT_PID = ${Number(parentPid) || 0}
+$WAIT_PIDS = @(${waitPids.join(", ")})
 $ZIP_PATH = ${psQuote(zipPath)}
 $CURRENT_APP_DIR = ${psQuote(currentAppDir)}
 $EXE_NAME = ${psQuote(exeName)}
@@ -127,14 +129,23 @@ function Write-UpdateLog([string]$Message) {
   Add-Content -LiteralPath $LOG_PATH -Value ("[" + (Get-Date).ToString("s") + "] " + $Message)
 }
 
-try {
-  Write-UpdateLog "Waiting for CodexBridge process $PARENT_PID to exit."
+function Wait-UpdateProcessExit([int]$TargetPid) {
+  if ($TargetPid -le 0) {
+    return
+  }
+  Write-UpdateLog "Waiting for process $TargetPid to exit."
   $deadline = (Get-Date).AddSeconds(90)
-  while (Get-Process -Id $PARENT_PID -ErrorAction SilentlyContinue) {
+  while (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue) {
     if ((Get-Date) -gt $deadline) {
-      throw "CodexBridge did not exit within 90 seconds."
+      throw "Process $TargetPid did not exit within 90 seconds."
     }
     Start-Sleep -Milliseconds 500
+  }
+}
+
+try {
+  foreach ($waitPid in $WAIT_PIDS) {
+    Wait-UpdateProcessExit $waitPid
   }
 
   New-Item -ItemType Directory -Force -Path $WORK_DIR | Out-Null
@@ -182,14 +193,16 @@ try {
 
 export function generateMacPortableUpdateScript({
   parentPid,
+  blockingPids = [],
   zipPath,
   currentAppBundle,
   workDir,
   logPath,
 }) {
+  const waitPids = uniquePositivePids([parentPid, ...blockingPids]);
   return `#!/bin/sh
 set -eu
-PARENT_PID=${Number(parentPid) || 0}
+WAIT_PIDS=${shQuote(waitPids.join(" "))}
 ZIP_PATH=${shQuote(zipPath)}
 CURRENT_APP_BUNDLE=${shQuote(currentAppBundle)}
 WORK_DIR=${shQuote(workDir)}
@@ -210,14 +223,16 @@ restore_old_app() {
 
 trap 'log "Update failed."; restore_old_app' ERR
 
-log "Waiting for CodexBridge process $PARENT_PID to exit."
-deadline=$(( $(date +%s) + 90 ))
-while kill -0 "$PARENT_PID" 2>/dev/null; do
-  if [ "$(date +%s)" -gt "$deadline" ]; then
-    log "CodexBridge did not exit within 90 seconds."
-    exit 1
-  fi
-  sleep 1
+for pid in $WAIT_PIDS; do
+  log "Waiting for process $pid to exit."
+  deadline=$(( $(date +%s) + 90 ))
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$(date +%s)" -gt "$deadline" ]; then
+      log "Process $pid did not exit within 90 seconds."
+      exit 1
+    fi
+    sleep 1
+  done
 done
 
 stamp="$(date '+%Y%m%d-%H%M%S')"
@@ -254,6 +269,14 @@ function parseVersion(value) {
     .split(/[.-]/)
     .map((part) => Number.parseInt(part, 10))
     .filter((part) => Number.isFinite(part));
+}
+
+function uniquePositivePids(values) {
+  return [...new Set(
+    values
+      .map((value) => Math.floor(Number(value)))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  )];
 }
 
 function psQuote(value) {

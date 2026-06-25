@@ -88,6 +88,7 @@ test("updater reports current and unsupported states clearly", () => {
 test("Windows portable updater script replaces and restarts without batch deletion", () => {
   const script = generateWindowsPortableUpdateScript({
     parentPid: 1234,
+    blockingPids: [5678],
     zipPath: "C:\\Users\\me\\AppData\\Roaming\\CodexBridge\\updates\\CodexBridge.zip",
     currentAppDir: "C:\\Tools\\CodexBridge-win32-x64",
     exeName: "CodexBridge.exe",
@@ -99,6 +100,8 @@ test("Windows portable updater script replaces and restarts without batch deleti
   assert.match(script, /Expand-Archive/);
   assert.match(script, /Move-Item/);
   assert.match(script, /Start-Process/);
+  assert.match(script, /\$WAIT_PIDS = @\(1234, 5678\)/);
+  assert.match(script, /Waiting for process \$TargetPid to exit/);
   assert.doesNotMatch(script, /Remove-Item\s+-Recurse|rm\s+-rf|rmdir\s+\/s|rd\s+\/s|del\s+\/s/i);
 });
 

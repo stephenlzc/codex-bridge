@@ -665,6 +665,7 @@ async function preparePortableUpdate(updater, plan) {
     const scriptFile = path.join(updatesDir, `apply-update-${stamp}.ps1`);
     const script = updater.generateWindowsPortableUpdateScript({
       parentPid: process.pid,
+      blockingPids: [routerProcess?.pid].filter(Boolean),
       zipPath: downloadPath,
       currentAppDir: path.dirname(process.execPath),
       exeName: path.basename(process.execPath),
@@ -678,6 +679,7 @@ async function preparePortableUpdate(updater, plan) {
     const scriptFile = path.join(updatesDir, `apply-update-${stamp}.sh`);
     const script = updater.generateMacPortableUpdateScript({
       parentPid: process.pid,
+      blockingPids: [routerProcess?.pid].filter(Boolean),
       zipPath: downloadPath,
       currentAppBundle: currentMacAppBundle(),
       workDir: updatesDir,

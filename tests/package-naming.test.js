@@ -27,6 +27,12 @@ test("desktop quit path does not send renderer updates after the window is destr
   assert.doesNotMatch(main, /mainWindow\?\.webContents\.send/);
 });
 
+test("desktop updater waits for router child process before replacing portable files", () => {
+  const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
+
+  assert.match(main, /blockingPids:\s*\[routerProcess\?\.pid\]\.filter\(Boolean\)/);
+});
+
 test("Windows release archive uses formal portable package naming", () => {
   const workflow = fs.readFileSync(
     path.join(process.cwd(), ".github", "workflows", "desktop-portable.yml"),

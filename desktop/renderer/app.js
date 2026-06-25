@@ -35,6 +35,12 @@ const els = {
   cancelCustomEdit: document.querySelector("#cancelCustomEdit"),
   routerToggle: document.querySelector("#routerToggle"),
   checkUpdates: document.querySelector("#checkUpdates"),
+  updateDialog: document.querySelector("#updateDialog"),
+  updateDialogVersion: document.querySelector("#updateDialogVersion"),
+  updateDialogMessage: document.querySelector("#updateDialogMessage"),
+  updateDialogAsset: document.querySelector("#updateDialogAsset"),
+  confirmUpdate: document.querySelector("#confirmUpdate"),
+  cancelUpdate: document.querySelector("#cancelUpdate"),
 };
 
 document.querySelectorAll(".nav-item").forEach((button) => {
@@ -183,16 +189,12 @@ els.checkUpdates.addEventListener("click", () =>
       showToast(updatePlan.message || "当前已经是最新版。");
       return;
     }
-    const assetText = updatePlan.asset
-      ? `\n更新包：${updatePlan.asset.name} · ${formatBytes(updatePlan.asset.size)}`
-      : "";
-    const accepted = window.confirm(
-      `发现新版本 v${updatePlan.latestVersion}，是否现在下载并重启更新？${assetText}`,
-    );
+    const accepted = await showUpdateDialog(updatePlan);
     if (!accepted) {
       showToast("已取消更新。");
       return;
     }
+    showToast("正在下载更新包，完成后会退出并自动重启。");
     const result = await api.installUpdate();
     showToast(result.message || "更新已开始，CodexBridge 将自动重启。");
   }),
@@ -1014,6 +1016,47 @@ function renderLogs(logs) {
     ? logs.join("\n")
     : "暂无日志。启动 Router 或点击操作按钮后，这里会显示执行结果。";
   els.logOutput.scrollTop = els.logOutput.scrollHeight;
+}
+
+function showUpdateDialog(updatePlan) {
+  return new Promise((resolve) => {
+    els.updateDialogVersion.textContent = `v${updatePlan.latestVersion || ""}`;
+    els.updateDialogMessage.textContent =
+      "下载完成后会退出当前程序、替换目录并自动重启。";
+    els.updateDialogAsset.textContent = updatePlan.asset
+      ? `${updatePlan.asset.name} · ${formatBytes(updatePlan.asset.size)}`
+      : "未读取到更新包信息";
+    els.updateDialog.classList.remove("hidden");
+    els.updateDialog.setAttribute("aria-hidden", "false");
+    els.confirmUpdate.focus();
+
+    const finish = (accepted) => {
+      els.updateDialog.classList.add("hidden");
+      els.updateDialog.setAttribute("aria-hidden", "true");
+      els.confirmUpdate.removeEventListener("click", accept);
+      els.cancelUpdate.removeEventListener("click", cancel);
+      els.updateDialog.removeEventListener("click", backdropCancel);
+      document.removeEventListener("keydown", escapeCancel);
+      resolve(accepted);
+    };
+    const accept = () => finish(true);
+    const cancel = () => finish(false);
+    const backdropCancel = (event) => {
+      if (event.target === els.updateDialog) {
+        finish(false);
+      }
+    };
+    const escapeCancel = (event) => {
+      if (event.key === "Escape") {
+        finish(false);
+      }
+    };
+
+    els.confirmUpdate.addEventListener("click", accept);
+    els.cancelUpdate.addEventListener("click", cancel);
+    els.updateDialog.addEventListener("click", backdropCancel);
+    document.addEventListener("keydown", escapeCancel);
+  });
 }
 
 function showToast(message, type = "success") {

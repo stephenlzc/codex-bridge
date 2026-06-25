@@ -623,6 +623,59 @@ h3 {
   display: none;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 25, 33, 0.42);
+}
+
+.update-dialog {
+  width: min(520px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(16, 25, 33, 0.28);
+}
+
+.update-dialog-header,
+.update-dialog-body,
+.update-dialog-actions {
+  padding: 18px;
+}
+
+.update-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.update-dialog-header p,
+.update-dialog-body p {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.update-dialog-body strong {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+.update-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: #f8fafb;
+}
+
 .selection-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
