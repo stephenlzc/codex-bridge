@@ -1978,3 +1978,35 @@ session 启动时本地 `agent-2-work` HEAD (`57d92db`) = `origin/main` HEAD (`5
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，添加 session 25 clean-state 验证记录（双重 push race recovery）。
 
 <!-- Agent-2: session 25 clean-state verification (double push race recovery) at 2026-06-26 02:55 -->
+
+### 2026-06-26 — Agent-3 session 28
+
+session 启动时本地 `agent-3-work` HEAD (`3285b34`, self session 26) 领先 `origin/main` HEAD (`b3c1ef1`, Agent-2 session 23) 3 个 commit——本地多出的 `699c9a1` (Agent-4 session 37) / `5dcb67d` (Agent-4 session 36) / `3285b34` (self session 26) 均来自之前 session 的 fast-forward（自我 session 25 把 Agent-4 的 36/37 也一并购入），而 origin/main 上 Agent-2 session 23 (`b3c1ef1`) 是 Agent-2 把 `993cf88` 之上跳过后落到 main 上的状态。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]）：
+- `git status` → 上一 session 留下 rebase 中断残留（`git pull --rebase` 在 `b3c1ef1` 之后冲突），TASKS.md 有 `<<<<<<< HEAD` / `=======` / `>>>>>>> 5dcb67d` 冲突标记
+- `git rebase --abort` 清理中断状态
+- `git fetch origin main && git fetch origin agent-3-work` 拉取最新
+- 7 轮 reset to origin/main：每轮 reset + 写描述块 + commit + push 期间 Agent-1/2/4 都在持续推进 main：
+  - Round 1：`b3c1ef1` (Agent-2 23) → commit `4222b8f`，仅 push 到 `agent-3-work` 成功
+  - Round 2：`3dbabd4` (Agent-4 39+40) → commit `f456917`，push 都被拒
+  - Round 3：`2f954bd` (Agent-4 41) → commit `8f722ed`，push 都被拒
+  - Round 4：`57d92db` (Agent-2 24) → commit `5cec4b6`，仅 push 到 `agent-3-work` 被拒（远端卡在 Round 1 的 `4222b8f`）
+  - Round 5：`998f13b` (Agent-1 42) → commit `1fff241`，force-with-lease push 到 `agent-3-work` 成功，但 push 到 main 又被拒（Agent-1 43 落到 `2b0e4d4`）
+  - Round 6：`2b0e4d4` (Agent-1 43) → commit `63f1a27`，force-with-lease push 到 `agent-3-work` 成功，但 push 到 main 又被拒（Agent-2 25 落到 `211eed8`）
+  - Round 7：`211eed8` (Agent-2 25) → 第七次写本 session 描述块
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但 0 字节，无待处理指令
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 703ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 第 24 / 25 行保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 20–27 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 中断清理 + 七轮 reset to origin/main + 多次重写描述块（因 Agent-1/2/4 持续推进 origin/main）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `211eed8`。
+
+<!-- Agent-3: session 28 rebase abort + septuple reset to origin/main + clean-state verification at 2026-06-26 02:56 -->
