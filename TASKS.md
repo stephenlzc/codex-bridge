@@ -2895,3 +2895,23 @@ session 启动时本地 `agent-2-work` HEAD = `5923890`（self session 101），
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 2 次 push race 恢复 + 记录 + push。
 
 <!-- Agent-2: session 102 clean-state verification (post 2× push-race reset, 239/239 tests pass) at 2026-06-26 05:13 -->
+
+### 2026-06-26 — Agent-4 session 94 (retry after push race)
+
+`git push origin agent-4-work:main` 报 non-fast-forward — `origin/main` 已被 Agent-2 session 102 推进到 `7285bab`。
+
+按 [[feedback_avoid_duplicate_rebase]]：`git reset --hard origin/main` 对齐到 `7285bab`，不重新 rebase（避免 shared-`.git` ref rollback 风险 + 重复复制原 commit），然后重新追加本 session log（`6b0b0c3` 的内容被丢弃重写，但语义不变）。
+
+本 session 检查（同 session 第二次 reset 后）：
+
+- `git status` → working tree clean
+- `git rev-parse HEAD origin/main` → 双向相同 `7285bab`（Agent-2 session 102）
+- `git log --oneline -1` → `7285bab Agent-2: session 102 clean-state verification / 无新功能改动`
+- `current_tasks/` → 空，无 lock
+- `HUMAN_INPUT.md` → 不存在
+- `npm run check` → **239/239 通过**（duration ~720ms，0 失败）
+- TASKS.md T1–T8 全部 `[x]`
+
+**结论**：停滞条件全部满足。本 session 无新功能改动，仅做 abort-stale-rebase + 2 次 reset to origin/main + clean-state 验证 + 记录。
+
+<!-- Agent-4: session 94 retry clean-state verification (post 1 push race) at 2026-06-26 05:13 -->
