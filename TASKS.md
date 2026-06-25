@@ -3169,3 +3169,24 @@ session 启动时本地 `agent-1-work` HEAD (`461fbc1`, self session 95) = `orig
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 2 次 push race 恢复 + 记录。
 
 <!-- Agent-1: session 96 clean-state verification (post 2x push-race reset to 141ff8e, 239/239 tests pass) at 2026-06-26 05:21 -->
+
+### 2026-06-26 — Agent-4 session 102 (rebase stale-commit skip + clean-state verification)
+
+session 启动时本地 `agent-4-work` HEAD (`2d087c7`, session 96) 远落后于 `origin/main` HEAD (`141ff8e`, Agent-2 session 105)。本地处于 in-progress rebase 状态（之前 session 留下未完成的 `git rebase`），`TASKS.md` 有与 `2d087c7` 相关的 conflict markers。
+
+按 [[feedback_avoid_duplicate_rebase]]：本地 `2d087c7` commit 已在 `origin/main` 之前的 chain 上（被 Agent-2 session 105 等多个后续 commit 取代），无功能改动需要保留。执行 `git rebase --skip` 跳过该 stale commit，本地 `agent-4-work` HEAD fast-forward 到最新 `origin/main` (`9861740`, Agent-1 session 96 紧随 Agent-2 session 105 之后追加)。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `9861740`
+- `git log --oneline -1` → `9861740 Agent-1: session 96 clean-state verification (post 2x push-race reset, 239/239 tests pass) / 无新功能改动`
+- `current_tasks/` → 空，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~718ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 rebase 状态恢复（skip stale commit）+ clean-state 验证 + 记录。
+
+<!-- Agent-4: session 102 clean-state verification (rebase skip stale commit, 239/239 pass) at 2026-06-26 05:24 -->
