@@ -605,41 +605,30 @@ ipcMain.handle("updates:install", async () => {
   }
   const prepared = await preparePortableUpdate(updater, plan, emitUpdateProgress);
   appendLog(`Update package downloaded: ${prepared.downloadPath}`);
-  appendLog(`Starting updater script: ${prepared.scriptPath}`);
+  appendLog(`Update package ready for manual install: ${prepared.downloadPath}`);
+  appendLog(`Manual update instructions: ${prepared.manualNotePath}`);
   emitUpdateProgress({
-    phase: "restarting",
+    phase: "ready",
     downloadedBytes: plan.asset?.size || 0,
     totalBytes: plan.asset?.size || 0,
     percent: 100,
+    message: "更新包已下载到 updates 目录；当前程序保持运行。",
   });
-  setTimeout(() => {
-    launchPortableUpdater(prepared.scriptPath, {
-      onSpawn: () => exitForPortableUpdate(),
-      onError: (error) => {
-        const message = formatError("updateLaunch", error);
-        appendRuntimeLog(message);
-        appendLog(`Update launcher failed: ${message}`);
-        try {
-          shell.showItemInFolder(prepared.scriptPath);
-        } catch {
-          // Opening the update folder is best-effort; the old app must stay usable.
-        }
-        try {
-          dialog.showErrorBox(
-            "CodexBridge update failed",
-            `无法启动更新脚本，旧版本已保留。\n\n${message}\n\n更新文件位置：${prepared.scriptPath}`,
-          );
-        } catch {
-          // The app may be shutting down or unable to show dialogs.
-        }
-      },
-    });
-  }, 500);
+  try {
+    shell.showItemInFolder(prepared.downloadPath);
+  } catch (error) {
+    appendRuntimeLog(formatError("showUpdatePackage", error));
+    const openError = await shell.openPath(path.dirname(prepared.downloadPath));
+    if (openError) {
+      appendRuntimeLog(`openUpdateFolder: ${openError}`);
+    }
+  }
   return {
     ok: true,
-    message: `已下载 ${plan.latestVersion}，CodexBridge 将退出、替换程序目录并自动重启。`,
+    message: `已下载 ${plan.latestVersion}，更新包已放到 updates 目录。当前程序不会自动退出；如需立即升级，请退出 CodexBridge 后从 updates 目录打开新版。`,
     latestVersion: plan.latestVersion,
     downloadPath: prepared.downloadPath,
+    manualNotePath: prepared.manualNotePath,
     scriptPath: prepared.scriptPath,
   };
 });
@@ -776,30 +765,31 @@ function writeManualUpdateInstructions({
   platform,
 }) {
   const lines = [
-    "CodexBridge manual update fallback",
+    "CodexBridge download-only portable update",
     "",
     `Downloaded package: ${packagePath}`,
     `Current app directory: ${currentAppDir}`,
+    "This portable build keeps the current app running after download.",
     "",
   ];
   if (platform === "win32") {
     lines.push(
-      "If automatic update does not restart into the new version:",
+      "To update manually:",
       "1. Fully exit CodexBridge from the tray icon.",
-      "2. Unzip the downloaded package in this folder.",
+      "2. Unzip the downloaded package in this updates folder.",
       "3. Open the extracted CodexBridge-win32-x64 folder.",
-      "4. Run CodexBridge.exe.",
+      "4. Run CodexBridge.exe from the extracted folder.",
       "",
-      "The automatic updater normally backs up the old app directory and replaces the same path after CodexBridge exits.",
+      "Your configuration, keys, model selection, statistics, and logs are stored in the user data directory, not inside this package folder.",
     );
   } else if (platform === "darwin") {
     lines.push(
-      "If automatic update does not restart into the new version:",
+      "To update manually:",
       "1. Fully quit CodexBridge.",
-      "2. Unzip the downloaded package in this folder.",
+      "2. Unzip the downloaded package in this updates folder.",
       "3. Open the extracted CodexBridge.app.",
       "",
-      "The automatic updater normally backs up the old app bundle and replaces the same path after CodexBridge exits.",
+      "Your configuration, keys, model selection, statistics, and logs are stored in the user data directory, not inside this package folder.",
     );
   } else {
     lines.push("Automatic update is not supported on this platform.");
@@ -880,54 +870,6 @@ async function downloadFile(url, targetPath, {
       throw new Error(`更新包下载不完整：expected ${expectedFinalBytes} bytes, got ${finalBytes} bytes`);
     }
   }
-}
-
-function launchPortableUpdater(scriptFile, { onSpawn, onError } = {}) {
-  const child = process.platform === "win32"
-    ? spawn("powershell.exe", [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        scriptFile,
-      ], {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      })
-    : spawn("/bin/sh", [scriptFile], {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      });
-  child.once("spawn", () => {
-    if (typeof onSpawn === "function") {
-      onSpawn();
-    }
-  });
-  child.once("error", (error) => {
-    if (typeof onError === "function") {
-      onError(error);
-    } else {
-      appendRuntimeLog(formatError("updateLaunch", error));
-    }
-  });
-  child.unref();
-  return child;
-}
-
-function exitForPortableUpdate() {
-  isQuitting = true;
-  stopRouter({ silent: true });
-  if (tray) {
-    tray.destroy();
-    tray = null;
-  }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.destroy();
-  }
-  app.exit(0);
-  setTimeout(() => process.exit(0), 1000).unref();
 }
 
 function currentMacAppBundle() {

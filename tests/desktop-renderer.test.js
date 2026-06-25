@@ -44,6 +44,8 @@ test("desktop renderer exposes update from sidebar without a dedicated page", ()
   assert.match(rendererSource, /els\.appVersion\.textContent = `v\$\{state\.appVersion \|\| "-"\}`;/);
   assert.match(rendererSource, /showUpdateDialog/);
   assert.doesNotMatch(rendererSource, /window\.confirm/);
+  assert.match(rendererSource, /下载更新包/);
+  assert.doesNotMatch(rendererSource, /下载并重启/);
 });
 
 test("desktop renderer opens folder buttons through the shared action handler", () => {

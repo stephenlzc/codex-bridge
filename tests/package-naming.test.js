@@ -33,30 +33,25 @@ test("desktop updater waits for router child process before replacing portable f
   assert.match(main, /blockingPids:\s*\[routerProcess\?\.pid\]\.filter\(Boolean\)/);
 });
 
-test("desktop portable update exits the tray process before file replacement", () => {
+test("desktop portable update keeps the current app open and exposes the downloaded package", () => {
   const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
 
-  assert.match(main, /const launchedAfterUpdate = process\.argv\.includes\("--updated"\)/);
-  assert.match(main, /function exitForPortableUpdate/);
-  assert.match(main, /tray\.destroy\(\)/);
-  assert.match(main, /mainWindow\.destroy\(\)/);
-  assert.match(main, /app\.exit\(0\)/);
-  assert.match(main, /process\.exit\(0\)/);
-  assert.match(main, /launchPortableUpdater\(prepared\.scriptPath,\s*\{/);
-  assert.match(main, /onSpawn:\s*\(\) => exitForPortableUpdate\(\)/);
-  assert.match(main, /onError:\s*\(error\) =>/);
-  assert.match(main, /shell\.showItemInFolder\(prepared\.scriptPath\)/);
-  assert.match(main, /CodexBridge 已更新到 v\$\{app\.getVersion\(\)\}/);
-  assert.match(main, /Updated CodexBridge launched/);
+  assert.match(main, /Update package ready for manual install/);
+  assert.match(main, /phase:\s*"ready"/);
+  assert.match(main, /shell\.showItemInFolder\(prepared\.downloadPath\)/);
+  assert.match(main, /downloadPath:\s*prepared\.downloadPath/);
+  assert.match(main, /manualNotePath:\s*prepared\.manualNotePath/);
+  assert.doesNotMatch(main, /onSpawn:\s*\(\) => exitForPortableUpdate\(\)/);
+  assert.doesNotMatch(main, /phase:\s*"restarting"/);
 });
 
-test("desktop launches the Windows updater through detached PowerShell directly", () => {
+test("desktop does not auto-launch the portable updater from the running app", () => {
   const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
 
-  assert.match(main, /spawn\("powershell\.exe",\s*\[/);
-  assert.match(main, /"-ExecutionPolicy",\s*"Bypass"/);
-  assert.match(main, /"-File",\s*scriptFile/);
-  assert.match(main, /detached:\s*true/);
+  assert.doesNotMatch(main, /function launchPortableUpdater/);
+  assert.doesNotMatch(main, /function exitForPortableUpdate/);
+  assert.doesNotMatch(main, /spawn\("powershell\.exe",\s*\[/);
+  assert.doesNotMatch(main, /"-File",\s*scriptFile/);
   assert.doesNotMatch(main, /spawn\("cmd\.exe"/);
   assert.doesNotMatch(main, /start "" \/min powershell\.exe/);
 });
@@ -70,6 +65,10 @@ test("desktop updater keeps downloaded package visible in the update folder", ()
   assert.match(main, /const finalBytes = fs\.statSync\(targetPath\)\.size/);
   assert.match(main, /更新包下载不完整/);
   assert.match(main, /function writeManualUpdateInstructions/);
+  assert.match(main, /Manual update instructions/);
+  assert.match(main, /download-only portable update/);
+  assert.doesNotMatch(main, /If automatic update does not restart/);
+  assert.doesNotMatch(main, /The automatic updater normally backs up/);
   assert.doesNotMatch(main, /path\.join\(updatesDir, "downloads"\)/);
 });
 

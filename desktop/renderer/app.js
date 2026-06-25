@@ -208,16 +208,18 @@ els.checkUpdates.addEventListener("click", () =>
       totalBytes: updatePlan.asset?.size || 0,
       percent: 0,
     });
-    showToast("正在下载更新包，完成后会退出并自动重启。");
+    showToast("正在下载更新包，完成后会打开更新目录。");
     try {
       const result = await api.installUpdate();
       renderUpdateProgress({
-        phase: "restarting",
+        phase: "ready",
         downloadedBytes: updatePlan.asset?.size || 0,
         totalBytes: updatePlan.asset?.size || 0,
         percent: 100,
+        message: result.message,
       });
-      showToast(result.message || "更新已开始，CodexBridge 将自动重启。");
+      setUpdateDialogBusy(false);
+      showToast(result.message || "更新包已下载，当前程序保持运行。");
     } catch (error) {
       setUpdateDialogBusy(false);
       renderUpdateProgress({
@@ -1065,7 +1067,7 @@ function showUpdateDialog(updatePlan) {
   return new Promise((resolve) => {
     els.updateDialogVersion.textContent = `v${updatePlan.latestVersion || ""}`;
     els.updateDialogMessage.textContent =
-      "下载完成后会退出当前程序、替换目录并自动重启。";
+      "下载完成后会保存到当前程序旁边的 updates 目录，并打开文件夹。";
     els.updateDialogAsset.textContent = updatePlan.asset
       ? `${updatePlan.asset.name} · ${formatBytes(updatePlan.asset.size)}`
       : "未读取到更新包信息";
@@ -1114,7 +1116,7 @@ function setUpdateDialogBusy(isBusy) {
   els.updateDialog.classList.toggle("is-busy", Boolean(isBusy));
   els.confirmUpdate.disabled = Boolean(isBusy);
   els.cancelUpdate.disabled = Boolean(isBusy);
-  els.confirmUpdate.textContent = isBusy ? "更新中..." : "下载并重启";
+  els.confirmUpdate.textContent = isBusy ? "下载中..." : "下载更新包";
 }
 
 function resetUpdateProgress() {
@@ -1136,7 +1138,7 @@ function renderUpdateProgress(progress = {}) {
       : 0;
   const hasKnownSize = totalBytes > 0;
   const bytesPerSecond = Number(progress.bytesPerSecond || 0);
-  const isIndeterminate = !hasKnownSize && progress.phase !== "error" && progress.phase !== "restarting";
+  const isIndeterminate = !hasKnownSize && progress.phase !== "error" && progress.phase !== "ready";
   els.updateProgressTrack.classList.toggle("indeterminate", isIndeterminate);
   els.updateProgressBar.style.width = isIndeterminate ? "45%" : `${percent}%`;
   els.updateProgressPercent.textContent = isIndeterminate ? "计算中" : `${percent}%`;
@@ -1158,8 +1160,8 @@ function updateProgressText(phase, details) {
       ? `正在下载 ${formatBytes(details.downloadedBytes)} / ${formatBytes(details.totalBytes)}${speedText}`
       : `正在下载更新包...${speedText}`;
   }
-  if (phase === "restarting") {
-    return "下载完成，正在重启并替换程序...";
+  if (phase === "ready") {
+    return "下载完成，更新包已保存在 updates 目录。";
   }
   if (phase === "error") {
     return "更新失败，请稍后重试。";
