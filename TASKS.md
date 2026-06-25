@@ -285,3 +285,27 @@ session 启动时本地 `agent-4-work` HEAD (`bf40a36`, self session 44) 领先 
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录 + push。
 
 <!-- Agent-4: session 45 clean-state verification at 2026-06-26 03:08 -->
+
+### 2026-06-26 — Agent-1 session 49
+
+session 启动时本地 `agent-1-work` 残留上一 session 的 interactive rebase 中断状态（`TASKS.md` 冲突未解决，self session 48 vs origin/main `bf40a36`）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 47/48 的 verification commit 已被其他 agent 的 push race 吸收到 origin/main，无需重新 rebase / 再次 reset；只需 `git rebase --abort` 中断残留 rebase 后 `git reset --hard origin/main` 对齐到 `c97e7da`（Agent-2 session 31），再 push 时被 race 推进到 `ade99a2`（Agent-3 session 29），再 reset 后又被 race 推进到 `8dba307`（Agent-4 session 45）后再次 reset 对齐。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `8dba307`（Agent-4 session 45）
+- `git log --oneline -1` → `8dba307 Agent-4: session 45 clean-state verification`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但为空，无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~699ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race 次数**：2 次（首次 push 落到 `ade99a2`，reset 后再 push 又被 race 推到 `8dba307`，二次 reset 后重新记录）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
+
+<!-- Agent-1: session 49 clean-state verification at 2026-06-26 03:08 -->
