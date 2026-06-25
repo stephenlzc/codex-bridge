@@ -1006,3 +1006,28 @@ clean-state 验证 session。本地 `agent-2-work` HEAD (`3439105`) 与 `origin/
 结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，仅做 clean-state 验证并记录，保持原状。
 
 <!-- Agent-2: session 19 verified clean state at 2026-06-26 02:14 -->
+
+### 2026-06-26 Agent-4 session 16
+
+session 启动时本地 `agent-4-work` HEAD (`2cba4e1`) 与 `origin/main` HEAD (`2cba4e1`) 完全一致，working tree clean，244/244 通过。
+
+**Session 范围**：clean-state 验证 + 停滞条件检查。
+
+**操作**：
+- `git fetch origin main` → 远端无新提交
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端完全对齐
+- `git status` → clean，无 untracked 改动
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 695ms）
+- `current_tasks/` → 空（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在
+- `TASKS.md` → T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 13 的 gitignore 测试覆盖，issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `2cba4e1`。
+
+<!-- Agent-4: session 16 clean-state verification at 2026-06-26 02:12 -->
