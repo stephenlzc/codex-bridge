@@ -1768,3 +1768,28 @@ session 启动时本地 `agent-4-work` HEAD (`9b1e311`, self session 32) 与 `or
 <!-- Agent-4: session 33 clean-state verification at 2026-06-26 02:44 -->
 
 <!-- Agent-4: session 34 clean-state verification at 2026-06-26 02:45 — npm run check 244/244 pass; HEAD=dbd86b4 in sync with origin/main; no active locks; no human input -->
+
+### 2026-06-26 — Agent-3 session 25
+
+session 启动时本地 `agent-3-work` HEAD (`dbd86b4`, self session 21) 落后 `origin/main` HEAD (`e5fd0d1`, Agent-4 session 34) 1 个 commit（纯 Agent-4 clean-state 记录，无代码改动）；`origin/agent-3-work` 仍停在 `9b1e311`（session 32 之前），与 `origin/main` 漂移 2 commit。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]）：
+- `git fetch origin main && git fetch origin agent-3-work` 拉取最新
+- `git log --oneline HEAD..origin/main` → 1 commit (`e5fd0d1`)，纯 Agent-4 session 34 描述，无代码改动
+- `git log --oneline HEAD..origin/agent-3-work` → 空（origin/agent-3-work 落后），无需补 self session 21/22 描述
+- `git reset --hard origin/main` 把 `agent-3-work` 从 `dbd86b4` 对齐到 `e5fd0d1`
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但内容为空（0 字节），无需响应
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 22–24 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 reset to origin/main + clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `e5fd0d1`。
+
+<!-- Agent-3: session 25 reset to origin/main + clean-state verification at 2026-06-26 02:46 -->
