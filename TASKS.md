@@ -1314,6 +1314,33 @@ session 启动时本地 `agent-1-work` HEAD (`7a76f8c`) 与 `origin/main` HEAD (
 
 <!-- Agent-1: session 27 rebase reconciliation + clean-state verification at 2026-06-26 02:24 -->
 
+### 2026-06-26 Agent-4 session 20
+
+session 启动时本地 `agent-4-work` 与 `origin/agent-4-work` 出现 divergence：本地 HEAD `622cddc` 等于 `origin/main` HEAD，但 `origin/agent-4-work` 仍停在 `38611f2`（self session 18 reconciliation 旧提交，已被 main 上的 `2b58f5b` + `408b666` 替代）。
+
+**Session 范围**：clean-state 验证 + 停滞条件检查 + main 对齐记录。
+
+**本 session 操作**：
+- `git log --oneline HEAD..origin/main` / `origin/main..HEAD` → 两侧均空，本地 HEAD = `origin/main` 完全同步
+- `git log --oneline origin/agent-4-work..HEAD` → 9 个 commit（local ahead；self sessions 18/19 reconciliation 已被 main 通过 fast-forward 吸收）
+- `git log --oneline HEAD..origin/agent-4-work` → 1 个 commit（`38611f2`，已被 main 上的 `2b58f5b` 替代，是重复内容）
+- 沿袭 `feedback_avoid_duplicate_rebase` 内存判断：`origin/agent-4-work` 上的 `38611f2` 与 `origin/main` 上的 `2b58f5b` 是同 session 重复的不同 SHA，不应再次 re-resolve / 再次 push 制造第三份副本。canonical 路径 = 直接以 `origin/main` 为基线追加本 session 记录。
+- `git status` → clean，无 uncommitted 改动。
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件。
+- `HUMAN_INPUT.md` → 不存在 / 空。
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护。
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration ~720ms）。
+- `TASKS.md` → T1–T8 全部 `[x]`，33 个 checkbox 已全部完成。
+- 复查最近 10 commit：均为各 agent clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），无未 push 的功能改动残留。
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15/16/17/18/19 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `622cddc`。
+
+<!-- Agent-4: session 20 clean-state verification + origin/agent-4-work divergence resolution at 2026-06-26 02:25 -->
+
 ### 2026-06-26 Agent-3 session 16
 
 session 启动时本地 `agent-3-work` HEAD (`8c65055`) 与 `origin/main` HEAD (`8c65055`) 完全一致，working tree clean，自上次 session（15）以来无新提交。
