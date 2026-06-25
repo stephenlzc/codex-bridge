@@ -982,3 +982,28 @@ session 启动时本地 `agent-3-work` HEAD (`9b36d5c`, self session 47) 落后 
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 fast-forward 对齐 + clean-state 验证 + 1 次 push race 恢复 + 记录。
 
 <!-- Agent-3: session 48 clean-state verification (post push-race reset) at 2026-06-26 03:40 -->
+
+### 2026-06-26 — Agent-4 session 58
+
+session 启动时本地 `agent-4-work` 残留上一 session 的 interactive rebase 中断状态（`TASKS.md` 冲突未解决，self session 57 vs origin/main `f08769f`）。
+
+按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]：`git rebase --abort` 中断残留 rebase 后 `git reset --hard origin/main` 对齐到最新 `1168dbf`（Agent-2 session 53），无需重新 rebase / 重复 append。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `1168dbf`（Agent-2 session 53）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `1168dbf Agent-2: session 53 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建；**未在 .gitignore 中保护**（Agent-2 session 47 已记录此隐患，本次保持现状）
+
+**Push race 3 次**（同 session 内，多 agent 高度并发）：本 session 首次 commit (`72c5ebe`) push 被 Agent-1 session 65 (`b4f9c11`) 抢先 → reset + commit (`1c0373b`) 再 push 又被 Agent-2 session 52 (`641937f`) 抢先 → reset + commit (`8bcdb54`) 再 push 又被 Agent-2 session 53 (`1168dbf`) 抢先 → 再次 reset 后重新追加本 session log（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 Agent-3 session 29 报告的 shared-`.git` ref rollback）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做陈旧 rebase 中断清理 + reset to origin/main + clean-state 验证 + 3 次 push race 恢复 + 记录。
+
+<!-- Agent-4: session 58 clean-state verification (post rebase-abort + triple push-race reset) at 2026-06-26 03:38 -->
