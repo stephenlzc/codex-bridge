@@ -27,6 +27,9 @@ const CODEX_BRIDGE_TOP_LEVEL_KEYS = new Set([
   "model",
   "model_catalog_json",
   "model_reasoning_effort",
+  "model_context_window",
+  "model_max_output_tokens",
+  "model_auto_compact_token_limit",
   "sandbox_mode",
   "approval_policy",
   "disable_response_storage",
@@ -484,7 +487,7 @@ function codexPluginRuntimeDiagnostics({ homeDir = os.homedir() } = {}) {
     ...pluginLines,
     `- node_repl command: ${nodeReplExists ? "ok" : nodeReplCommand ? "missing" : "not configured"}${nodeReplCommand ? ` ${redactSecretText(nodeReplCommand)}` : ""}`,
     `- node_repl env: node=${nodePathExists ? "ok" : nodeReplEnv.NODE_REPL_NODE_PATH ? "missing" : "not configured"}, modules=${moduleDirExists ? "ok" : nodeReplEnv.NODE_REPL_NODE_MODULE_DIRS ? "missing" : "not configured"}, codex=${codexCliExists ? "ok" : nodeReplEnv.CODEX_CLI_PATH ? "missing" : "not configured"}`,
-    `- sky runtime: ${skyRuntime.ok ? `ok ${redactSecretText(skyRuntime.kind)}` : "missing"}`,
+    `- sky runtime: ${skyRuntime.ok ? `ok ${redactSecretText(skyRuntime.kind)}` : `missing${skyRuntime.kind ? ` ${redactSecretText(skyRuntime.kind)}` : ""}`}`,
     ...(notifyHooks.length
       ? notifyHooks.map((item) => `- notify hook: ${item.exists ? "ok" : "missing"} ${redactSecretText(item.path)}`)
       : ["- notify hook: not configured"]),
@@ -2087,28 +2090,21 @@ function splitPathList(value) {
 
 function findSkyRuntime(moduleDirs) {
   for (const moduleDir of moduleDirs || []) {
-    for (const packageDir of ["@oai", "%40oai"]) {
-      const clientPath = path.join(
-        moduleDir,
-        packageDir,
-        "sky",
-        "dist",
-        "project",
-        "cua",
-        "sky_js",
-        "src",
-        "targets",
-        "windows",
-        "internal",
-        "computer_use_client_base.js",
-      );
-      if (fs.existsSync(clientPath)) {
-        return {
-          ok: true,
-          kind: `(${packageDir}/sky)`,
-          path: clientPath,
-        };
-      }
+    const importablePath = skyClientPath(moduleDir, "@oai");
+    if (fs.existsSync(importablePath)) {
+      return {
+        ok: true,
+        kind: "(@oai/sky)",
+        path: importablePath,
+      };
+    }
+    const encodedPath = skyClientPath(moduleDir, "%40oai");
+    if (fs.existsSync(encodedPath)) {
+      return {
+        ok: false,
+        kind: "encoded_scope_only",
+        path: encodedPath,
+      };
     }
   }
   return {
@@ -2116,6 +2112,23 @@ function findSkyRuntime(moduleDirs) {
     kind: "",
     path: "",
   };
+}
+
+function skyClientPath(moduleDir, packageDir) {
+  return path.join(
+    moduleDir,
+    packageDir,
+    "sky",
+    "dist",
+    "project",
+    "cua",
+    "sky_js",
+    "src",
+    "targets",
+    "windows",
+    "internal",
+    "computer_use_client_base.js",
+  );
 }
 
 function looksLikeExecutablePath(value) {

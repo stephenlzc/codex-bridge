@@ -327,7 +327,7 @@ test("supportDiagnostics reports stale Codex plugin runtime without mutating it"
   const nodeReplPath = path.join(nodeBinDir, "node_repl.exe");
   const nodePath = path.join(nodeBinDir, "node.exe");
   const codexCliPath = path.join(resourcesDir, "codex.exe");
-  const skyBasePath = path.join(nodeModuleDir, "%40oai", "sky");
+  const skyBasePath = path.join(nodeModuleDir, "@oai", "sky");
   const skyClientPath = path.join(
     skyBasePath,
     "dist",
@@ -407,6 +407,66 @@ test("supportDiagnostics reports stale Codex plugin runtime without mutating it"
   assert.match(diagnostics.text, /node_repl command: ok/);
   assert.match(diagnostics.text, /sky runtime: ok/);
   assert.match(diagnostics.text, /notify hook: missing/);
+});
+
+test("supportDiagnostics reports encoded-only sky runtime as not importable", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  const resourcesDir = path.join(homeDir, "OpenAI.Codex_26.616.3767.0_x64", "app", "resources");
+  const nodeBinDir = path.join(resourcesDir, "cua_node", "bin");
+  const nodeModuleDir = path.join(nodeBinDir, "node_modules");
+  const nodeReplPath = path.join(nodeBinDir, "node_repl.exe");
+  const nodePath = path.join(nodeBinDir, "node.exe");
+  const codexCliPath = path.join(resourcesDir, "codex.exe");
+  const encodedSkyClientPath = path.join(
+    nodeModuleDir,
+    "%40oai",
+    "sky",
+    "dist",
+    "project",
+    "cua",
+    "sky_js",
+    "src",
+    "targets",
+    "windows",
+    "internal",
+    "computer_use_client_base.js",
+  );
+
+  for (const filePath of [nodeReplPath, nodePath, codexCliPath, encodedSkyClientPath]) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, "", "utf8");
+  }
+  fs.mkdirSync(codexDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(codexDir, "config.toml"),
+    [
+      '[plugins."computer-use@openai-bundled"]',
+      "enabled = true",
+      "",
+      "[mcp_servers.node_repl]",
+      `command = "${toFixtureTomlPath(nodeReplPath)}"`,
+      "",
+      "[mcp_servers.node_repl.env]",
+      `CODEX_CLI_PATH = "${toFixtureTomlPath(codexCliPath)}"`,
+      `NODE_REPL_NODE_PATH = "${toFixtureTomlPath(nodePath)}"`,
+      `NODE_REPL_NODE_MODULE_DIRS = "${toFixtureTomlPath(nodeModuleDir)}"`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const diagnostics = supportDiagnostics(rootDir, {
+    lastHealth: { ok: true },
+    config: { port: 15722, models: [] },
+    homeDir,
+  });
+
+  assert.equal(diagnostics.summary.codexPlugins.ok, false);
+  assert.equal(diagnostics.summary.codexPlugins.reason, "sky_runtime_missing");
+  assert.match(diagnostics.text, /sky runtime: missing encoded_scope_only/);
 });
 
 test("secretValue returns only known provider secrets", () => {
@@ -1076,6 +1136,37 @@ test("applyCodexConfig preserves current sandbox and approval settings", () => {
 
   assert.match(written, /sandbox_mode = "workspace-write"/);
   assert.match(written, /approval_policy = "on-request"/);
+});
+
+test("applyCodexConfig removes stale top-level Codex context overrides", () => {
+  const rootDir = makeTempProject();
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  const codexDir = path.join(homeDir, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  const target = path.join(codexDir, "config.toml");
+  fs.writeFileSync(
+    target,
+    [
+      'model = "gpt-5.5"',
+      "model_context_window = 1100000",
+      "model_max_output_tokens = 90000",
+      "model_auto_compact_token_limit = 900000",
+      "",
+      "[mcp_servers.node_repl]",
+      'command = "C:/Codex/node_repl.exe"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  applyCodexConfig({ rootDir, mode: MODE_HYBRID, homeDir });
+  const written = fs.readFileSync(target, "utf8");
+
+  assert.match(written, /model_catalog_json = /);
+  assert.doesNotMatch(written, /^model_context_window\s*=/m);
+  assert.doesNotMatch(written, /^model_max_output_tokens\s*=/m);
+  assert.doesNotMatch(written, /^model_auto_compact_token_limit\s*=/m);
+  assert.match(written, /\[mcp_servers\.node_repl]\s+command = "C:\/Codex\/node_repl\.exe"/);
 });
 
 test("applyCodexConfig preserves the current Codex model selection", () => {

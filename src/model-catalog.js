@@ -22,9 +22,14 @@ export function modelCatalogEntry(model, defaults = {}, index = 0) {
   const upstreamContextWindow = Number(
     model.contextWindow || defaults.contextWindow || 258400,
   );
-  const contextWindow = Number(
+  const configuredCatalogContextWindow = Number(
     model.catalogContextWindow ||
       defaults.catalogContextWindow ||
+      defaults.contextWindow ||
+      0,
+  );
+  const contextWindow = Number(
+    configuredCatalogContextWindow ||
       (model.api === "chat_completions"
         ? Math.max(upstreamContextWindow, 1_000_000)
         : upstreamContextWindow),

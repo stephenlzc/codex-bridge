@@ -94,8 +94,17 @@ function suppressedToolCallMessage(toolCall, toolContext, hasRunnableToolCall = 
 function isSuppressedToolCall(toolCall, toolContext) {
   return (
     isInteractivePluginBootstrapRead(toolCall) ||
-    isUnsupportedNodeReplToolCall(toolCall, toolContext)
+    isUnsupportedNodeReplToolCall(toolCall, toolContext) ||
+    isUnknownChatToolCall(toolCall, toolContext)
   );
+}
+
+function isUnknownChatToolCall(toolCall, toolContext) {
+  const name = toolCall?.function?.name || toolCall?.name || "";
+  if (!name) {
+    return false;
+  }
+  return Boolean(toolContext?.chatToolNames) && !toolContext.chatToolNames.has(name);
 }
 
 function isUnsupportedNodeReplToolCall(toolCall, toolContext) {

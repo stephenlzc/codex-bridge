@@ -65,6 +65,31 @@ test("model catalog uses model context window for truncation instead of a 10k ca
   assert.equal(catalog.models[0].auto_compact_token_limit, 800_000);
 });
 
+test("model catalog uses configured catalog context as the Codex desktop safety window", () => {
+  const catalog = buildModelCatalog({
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "OpenAI GPT-4.1",
+        api: "responses",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1",
+        contextWindow: 1_047_576,
+      },
+    ],
+    catalog: {
+      contextWindow: 258400,
+      effectiveContextWindowPercent: 95,
+      autoCompactPercent: 80,
+    },
+  });
+
+  assert.equal(catalog.models[0].context_window, 258400);
+  assert.equal(catalog.models[0].max_context_window, 258400);
+  assert.equal(catalog.models[0].truncation_policy.limit, 245480);
+  assert.equal(catalog.models[0].auto_compact_token_limit, 206720);
+});
+
 test("chat catalog exposes a bridge-sized context window to avoid Codex local overflow", () => {
   const catalog = buildModelCatalog({
     models: [
@@ -1905,7 +1930,7 @@ test("chat providers get command guidance for explicit git push tasks", () => {
   assert.match(converted.body.messages[0].content, /attempted command returns that error/);
 });
 
-test("non-function Codex tools with schemas are exposed to chat providers", () => {
+test("chat routes do not expose native computer-use tools to providers", () => {
   const converted = responsesToChatRequest(
     {
       input: "take screenshot",
@@ -1927,11 +1952,14 @@ test("non-function Codex tools with schemas are exposed to chat providers", () =
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.tools.length, 1);
-  assert.equal(converted.body.tools[0].function.name, "computer_screenshot");
+  assert.equal(converted.body.tools, undefined);
+  assert.equal(
+    converted.toolContext.chatTools.some((tool) => tool.function?.name === "computer_screenshot"),
+    false,
+  );
 });
 
-test("chat computer tool calls are returned as computer_call items", () => {
+test("chat routes suppress unexpected native computer tool calls from providers", () => {
   const converted = responsesToChatRequest(
     {
       input: "take screenshot",
@@ -1979,13 +2007,11 @@ test("chat computer tool calls are returned as computer_call items", () => {
     converted.toolContext,
   );
 
-  assert.equal(response.output[0].type, "computer_call");
-  assert.equal(response.output[0].call_id, "call_screen");
-  assert.equal(response.output[0].name, "computer_screenshot");
-  assert.deepEqual(response.output[0].arguments, { display_id: "main" });
+  assert.equal(response.output.length, 0);
+  assert.doesNotMatch(JSON.stringify(response), /computer_call/);
 });
 
-test("computer call items are kept as paired chat tool calls", () => {
+test("chat routes keep prior computer tool outputs as text context", () => {
   const converted = responsesToChatRequest(
     {
       input: [
@@ -2019,13 +2045,12 @@ test("computer call items are kept as paired chat tool calls", () => {
     new ResponseHistory(),
   );
 
-  assert.equal(converted.body.messages.at(-2).role, "assistant");
+  assert.equal(converted.body.tools, undefined);
+  assert.equal(converted.body.messages.at(-1).role, "system");
   assert.equal(
-    converted.body.messages.at(-2).tool_calls[0].function.name,
-    "computer_screenshot",
+    converted.body.messages.some((message) => Array.isArray(message.tool_calls)),
+    false,
   );
-  assert.equal(converted.body.messages.at(-1).role, "tool");
-  assert.equal(converted.body.messages.at(-1).tool_call_id, "call_screen");
   assert.match(converted.body.messages.at(-1).content, /screenshot captured/);
 });
 

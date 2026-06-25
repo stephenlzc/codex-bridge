@@ -142,6 +142,9 @@ export function responseInputToChatMessages(input, toolContext) {
 
   for (const item of items) {
     if (isResponseToolCallItem(item)) {
+      if (shouldOmitResponseToolCallFromChatHistory(item, toolContext)) {
+        continue;
+      }
       pendingToolCalls.push(chatToolCallFromResponseItem(item, toolContext));
       continue;
     }
@@ -169,6 +172,14 @@ export function responseInputToChatMessages(input, toolContext) {
 
   flushToolCalls();
   return messages;
+}
+
+function shouldOmitResponseToolCallFromChatHistory(item, toolContext) {
+  if (item?.type !== "computer_call") {
+    return false;
+  }
+  const responseName = namespacedToolName(item.name || item.type || "tool", item.namespace);
+  return !toolContext.responseNameToChatName.has(responseName);
 }
 
 export function responseMessageToChatMessage(item) {
