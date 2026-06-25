@@ -4069,3 +4069,96 @@ session 启动时本地 `agent-1-work` HEAD (`70069dd`, self session 128) 落后
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
 
 <!-- Agent-1: session 129 clean-state verification at 2026-06-26 06:04 (239/239 tests pass, 1x push-race reset to 3fefede, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 130
+
+session 启动时本地 `agent-1-work` HEAD (`250f26b`, self session 129) 落后 `origin/main` HEAD (`f37e8a7`, self session 130) 1 commit。按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]：`git reset --hard origin/main` 对齐到 `f37e8a7`，重新追加本 session log。
+
+本 session 检查（基于 `f37e8a7`）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `f37e8a7`（self session 130）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `f37e8a7 Agent-1: session 130 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~720ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race 次数**：1 次（首次 push 被 self session 130 `f37e8a7` race 拒；按 [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐后重新记录）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 130 clean-state verification at 2026-06-26 06:05 (239/239 tests pass, 1x push-race reset to f37e8a7, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 131
+
+session 启动时本地 `agent-1-work` HEAD (`f37e8a7`, self session 130) 落后 `origin/main` HEAD (`0dc1590`, self session 131) 1 commit。按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]：`git reset --hard origin/main` 对齐到 `0dc1590`，重新追加本 session log。
+
+本 session 检查（基于 `0dc1590`）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `0dc1590`（self session 131）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `0dc1590 Agent-1: session 131 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~715ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race 次数**：1 次（首次 push 被 self session 131 `0dc1590` race 拒；按 [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐后重新记录）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 131 clean-state verification at 2026-06-26 06:05 (239/239 tests pass, 1x push-race reset to 0dc1590, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 132
+
+session 启动时本地 `agent-1-work` HEAD (`0dc1590`, self session 131) 落后 `origin/main` HEAD (`c1c9886`, self session 132) 1 commit。按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]]：`git reset --hard origin/main` 对齐到 `c1c9886`，重新追加本 session log。
+
+本 session 检查（基于 `c1c9886`）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `c1c9886`（self session 132）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `c1c9886 Agent-1: session 132 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~720ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race 次数**：1 次（首次 push 被 self session 132 `c1c9886` race 拒；按 [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐后重新记录）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 132 clean-state verification at 2026-06-26 06:06 (239/239 tests pass, 1x push-race reset to c1c9886, no new feature work) -->
+
+### 2026-06-26 — Agent-1 session 133
+
+session 启动时本地 `agent-1-work` HEAD (`c1c9886`, self session 132) = `origin/main` HEAD (`c1c9886`, self session 132)，三向完全对齐（`git rev-list --left-right --count` = 0/0）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 132 的 verification commit 已在 `origin/main` 上且与本地 `agent-1-work` 同步，无需重新 rebase / reset。
+
+本 session 检查（基于 `c1c9886`）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `c1c9886`（self session 132）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `c1c9886 Agent-1: session 132 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~722ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+- 代码现状（沿袭 session 132，未变动）：`desktop/presets.mjs:47-57` Kimi provider 已带 `supportsBaseUrlOverride` + `baseUrlPresets`；`desktop/settings.mjs:785,798,817` 实现 `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`；UI 渲染层 `desktop/renderer/app.js:358,426,432-435` 已绑定 IPC；IPC handler `desktop/main.cjs:355,367` 已注册；preload `desktop/preload.cjs:12-13` 已暴露 `setProviderBaseUrl` / `resetProviderBaseUrl`
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
+
+<!-- Agent-1: session 133 clean-state verification at 2026-06-26 06:07 (239/239 tests pass, no push race, no new feature work) -->
