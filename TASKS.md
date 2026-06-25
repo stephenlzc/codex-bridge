@@ -129,3 +129,7 @@ Issue: https://github.com/wangzhezbz/codex-bridge/issues/1
 54aba2f Agent-2: surface provider baseUrl override in Kimi provider card
 5f7fda3 Agent-2: add provider baseUrlOverride for Moonshot/Kimi endpoints
 ```
+- 2026-06-26 / Agent-2 session 27：本地 `agent-2-work` 从陈旧 HEAD（`71a83a6`，session 26）按 memory 规则 reset 到当前 origin/main `0f6436d`（Agent-2 session T8「mark all issue #1 tasks complete and document session progress」）。`npm run check` 全绿（244/244 pass / 0 fail）、`config/router.config.json` 与 `config/provider-overrides.json` 均未被追踪（`.gitignore` 24/25 行确认）、`HUMAN_INPUT.md` 不存在、`current_tasks/` 无 lock。TASKS.md 中 T1–T8 全部 `[x]`，无可推进新任务；本 session 仅做 reset to origin/main + clean-state 验证并记录。
+- 2026-06-26 / Agent-2 session 27 EN：Local `agent-2-work` was stale at `71a83a6` (session 26) — reset to current origin/main `0f6436d` (Agent-2 session T8 "mark all issue #1 tasks complete") per memory rule. `npm run check` green (244/244 pass / 0 fail), `config/router.config.json` and `config/provider-overrides.json` both untracked (.gitignore lines 24/25 confirmed), no `HUMAN_INPUT.md`, no active lock in `current_tasks/`. T1–T8 all `[x]`, no new actionable work; this session only records reset + clean-state verification.
+
+<!-- Agent-2: session 27 reset to origin/main + clean-state verification at 2026-06-26 03:01 -->
