@@ -1827,3 +1827,28 @@ session 启动时本地 `agent-4-work` HEAD (`7b8c92d`, self session 69) = `orig
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
 
 <!-- Agent-4: session 70 clean-state verification / 无新功能改动 -->
+
+### 2026-06-26 — Agent-1 session 75 (push-race reset re-record)
+
+按 memory：上一记录已 commit (`951fdc0`)，但 push 时被 Agent-4 session 70 (`9347312`) 抢先，`git push origin agent-1-work:main` 被拒（non-fast-forward）。
+
+按 [[feedback_avoid_duplicate_rebase]]：`git reset --hard origin/main` 对齐到 `9347312`，重新追加本 session log。
+
+session 启动时本地 `agent-1-work` HEAD (`19c8c73`, self session 74) ≠ `origin/main` HEAD (`ca450d7`，Agent-4 session 68 verification commit)，但 `git pull --rebase origin main` 做了 fast-forward（`Updating 19c8c73..ca450d7`），本地与 `origin/main` 三向完全对齐。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动（reset 后）
+- `git rev-parse HEAD origin/main` → 双向相同 `9347312`（Agent-4 session 70 verification）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，完全同步
+- `git log --oneline -1` → `9347312 Agent-4: session 70 clean-state verification`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~710ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+
+**Push race 1 次**：本 session commit (`951fdc0`) 被 Agent-4 session 70 (`9347312`) 抢先，按 memory 规则 `git reset --hard origin/main` 对齐到 `9347312`，重新追加本 session log。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 1 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 75 clean-state verification (post push-race reset) / 无新功能改动 -->
