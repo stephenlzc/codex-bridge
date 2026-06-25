@@ -4847,6 +4847,195 @@ test("responses-routed remote compact v2 wraps ordinary upstream output as one c
   }
 });
 
+test("responses-routed remote compact v2 keeps upstream stream enabled when required", async () => {
+  let upstreamBody;
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/responses");
+    upstreamCalls += 1;
+    upstreamBody = await readJson(req);
+    if (upstreamBody.stream !== true) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ detail: "Stream must be set to true" }));
+      return;
+    }
+
+    const response = {
+      id: "resp_native_stream_compact_summary",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.5",
+      output: [
+        {
+          id: "msg_native_stream_compact",
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [
+            {
+              type: "output_text",
+              text: "Summary: streamed compact response works.",
+              annotations: [],
+            },
+          ],
+        },
+      ],
+      output_text: "Summary: streamed compact response works.",
+      usage: {
+        input_tokens: 21,
+        output_tokens: 7,
+        total_tokens: 28,
+      },
+    };
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+    res.write(`event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+
+  await listen(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    clientAuth: { allowOpenAiBearer: true },
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${serverUrl(upstream)}/v1`,
+        model: "gpt-5.5",
+        authMode: "codex_openai",
+      },
+    ],
+  });
+
+  await listen(router);
+
+  try {
+    const response = await fetch(`${serverUrl(router)}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer codex-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        stream: true,
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: "long GPT task history",
+          },
+          { type: "compaction_trigger" },
+        ],
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.ok, true, text);
+    assert.equal(upstreamCalls, 1);
+    assert.equal(upstreamBody.stream, true);
+    assert.match(text, /Summary: streamed compact response works/);
+    assert.equal((text.match(/"type":"compaction"/g) || []).length, 3);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("responses-routed remote compact v2 retries as stream when an api-key upstream requires it", async () => {
+  let upstreamBody;
+  let upstreamCalls = 0;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/responses");
+    upstreamCalls += 1;
+    upstreamBody = await readJson(req);
+    if (upstreamBody.stream !== true) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ detail: "Stream must be set to true" }));
+      return;
+    }
+
+    const response = {
+      id: "resp_stream_retry_compact_summary",
+      object: "response",
+      status: "completed",
+      model: "gpt-compatible",
+      output: [
+        {
+          id: "msg_stream_retry_compact",
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [
+            {
+              type: "output_text",
+              text: "Summary: compact retry switched to stream.",
+              annotations: [],
+            },
+          ],
+        },
+      ],
+      output_text: "Summary: compact retry switched to stream.",
+    };
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
+    res.write(`event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+
+  await listen(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-compatible",
+    models: [
+      {
+        id: "gpt-compatible",
+        displayName: "GPT Compatible",
+        api: "responses",
+        baseUrl: `${serverUrl(upstream)}/v1`,
+        model: "gpt-compatible",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+
+  try {
+    const response = await fetch(`${serverUrl(router)}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-compatible",
+        stream: true,
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: "long compatible task history",
+          },
+          { type: "compaction_trigger" },
+        ],
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.ok, true, text);
+    assert.equal(upstreamCalls, 2);
+    assert.equal(upstreamBody.stream, true);
+    assert.match(text, /Summary: compact retry switched to stream/);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
 test("chat-routed responses compact endpoint returns compaction JSON", async () => {
   const upstream = http.createServer(async (_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });

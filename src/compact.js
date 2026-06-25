@@ -52,8 +52,8 @@ export function buildCompactChatRequest(requestBody, route, history) {
   return converted;
 }
 
-export function buildCompactResponsesRequest(requestBody) {
-  return compactRequestBody(requestBody);
+export function buildCompactResponsesRequest(requestBody, options = {}) {
+  return compactRequestBody(requestBody, options);
 }
 
 export function compactResponseFromChat(chat, requestedModel) {
@@ -126,13 +126,13 @@ export function compactResponseToSse(response) {
   return events.join("");
 }
 
-function compactRequestBody(requestBody) {
+function compactRequestBody(requestBody, options = {}) {
   const body = cloneJson(requestBody) || {};
   body.input = appendCompactPrompt(stripCompactionTrigger(body.input));
   if (body.messages !== undefined) {
     body.messages = appendCompactPrompt(stripCompactionTrigger(body.messages));
   }
-  body.stream = false;
+  body.stream = Boolean(options.stream);
   body.max_output_tokens = COMPACT_MAX_OUTPUT_TOKENS;
   delete body.instructions;
   delete body.tools;

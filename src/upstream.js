@@ -587,7 +587,9 @@ async function proxyChatCompact(requestBody, route, history, res, context = {}) 
 }
 
 async function proxyResponsesCompact(requestBody, route, history, res, context = {}) {
-  const compactBody = buildCompactResponsesRequest(requestBody);
+  const compactBody = buildCompactResponsesRequest(requestBody, {
+    stream: shouldStreamResponsesCompact(route),
+  });
   compactBody.model = route.model;
   const { messages: sourceMessages, toolContext } = responseRequestToChatSourceMessages(
     compactBody,
@@ -600,7 +602,30 @@ async function proxyResponsesCompact(requestBody, route, history, res, context =
 
   const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
   logRoute(context, route, upstreamUrl);
-  const upstream = await callJsonUpstream(upstreamUrl, route, compactBody, context);
+  let upstream;
+  try {
+    upstream = await callResponsesCompactUpstream(upstreamUrl, route, compactBody, context);
+  } catch (error) {
+    if (compactBody.stream || !isStreamRequiredError(error)) {
+      throw error;
+    }
+    const streamCompactBody = buildCompactResponsesRequest(requestBody, { stream: true });
+    streamCompactBody.model = route.model;
+    if (shouldInlineLocalHistoryForResponses(streamCompactBody, history)) {
+      inlineLocalHistoryForResponsesPayload(streamCompactBody, sourceMessages);
+    }
+    console.warn(
+      `[${new Date().toISOString()}] ${context.requestId || "req"} !! upstream ` +
+        `route=${route.id} compact requires stream=true; retrying compact request as event stream`,
+    );
+    upstream = await callResponsesCompactUpstream(
+      upstreamUrl,
+      route,
+      streamCompactBody,
+      context,
+      { cacheFailures: false },
+    );
+  }
   logUsage(context, route, extractUsageObject(upstream));
 
   const response = compactResponseFromResponses(upstream, requestBody.model || route.id);
@@ -630,6 +655,72 @@ async function proxyResponsesCompact(requestBody, route, history, res, context =
   }
 
   jsonResponse(res, 200, response);
+}
+
+async function callResponsesCompactUpstream(
+  upstreamUrl,
+  route,
+  payload,
+  context = {},
+  options = {},
+) {
+  const upstreamPayload = filterPayloadForAdapter(payload, route);
+  throwIfRecentUpstreamFailure(route, upstreamUrl, upstreamPayload, context);
+  let upstream;
+  try {
+    upstream = await fetchUpstream(upstreamUrl, {
+      method: "POST",
+      headers: upstreamHeaders(route, context, {
+        acceptEventStream: Boolean(upstreamPayload.stream),
+      }),
+      body: JSON.stringify(upstreamPayload),
+    }, context, route, options);
+  } catch (error) {
+    rememberUpstreamFailure(route, upstreamUrl, upstreamPayload, error, options);
+    throw error;
+  }
+  const text = await upstream.text();
+  if (!upstream.ok) {
+    const error = new UpstreamHttpError(upstream.status, text, upstreamUrl, route);
+    rememberUpstreamFailure(route, upstreamUrl, upstreamPayload, error, options);
+    throw error;
+  }
+  const parsed = tryParseJson(text);
+  if (parsed) {
+    return parsed;
+  }
+  const response = extractResponsesObject(text);
+  if (response) {
+    return response;
+  }
+  const error = new UpstreamHttpError(
+    502,
+    `Upstream returned non-JSON compact body: ${text.slice(0, 500)}`,
+    upstreamUrl,
+    route,
+  );
+  rememberUpstreamFailure(route, upstreamUrl, upstreamPayload, error, options);
+  throw error;
+}
+
+function shouldStreamResponsesCompact(route = {}) {
+  return authModeForRoute(route) === "codex_openai";
+}
+
+function isStreamRequiredError(error) {
+  if (!(error instanceof UpstreamHttpError)) {
+    return false;
+  }
+  const parsed = tryParseJson(error.bodyText);
+  const message = [
+    parsed?.detail,
+    parsed?.message,
+    parsed?.error?.message,
+    error.bodyText,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return /stream\b.*\btrue/i.test(message);
 }
 
 function chatToolContinuationTurns(requestBody, history) {
