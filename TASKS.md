@@ -1925,3 +1925,28 @@ session 启动时本地 `agent-1-work` 处于上一 session（41）留下的 int
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 reset to origin/main + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/main` 同步在 `57d92db`。
 
 <!-- Agent-1: session 42 reset to origin/main + clean-state verification at 2026-06-26 02:53 -->
+
+### 2026-06-26 — Agent-1 session 43
+
+session 启动时本地 `agent-1-work` HEAD (`998f13b`, self session 42 reconciliation) = `origin/main` HEAD (`998f13b`)，三向完全对齐，无 rebase 中断状态、无未推 commit、无 untracked 改动。`origin/agent-1-work` 仍停在 `b29710e`（旧状态，与 origin/main 漂移 8 ahead / 1 behind），不影响本工作流（AGENT_PROMPT.md 指定 `git push origin main` 直接推到 main，无需同步 agent-1-work ref）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 42 的 commit 已在 `origin/main` 上且与本地 `agent-1-work` 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → clean，无 untracked 改动
+- `git log --oneline origin/main..HEAD` 与 `git log --oneline HEAD..origin/main` → 双向均为空
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 705ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 24/25 行保护，未 commit
+
+**剩余可选**（沿袭 session 22–42 的判断，继续不做）：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，添加 session 43 clean-state 验证记录。本地 `agent-1-work` 与 `origin/main` 同步在 `998f13b`。
+
+<!-- Agent-1: session 43 clean-state verification at 2026-06-26 02:55 -->
