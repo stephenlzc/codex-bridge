@@ -261,3 +261,27 @@ session 启动时本地 `agent-3-work` HEAD (`3aacf5c`, self session 28) = `orig
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 仅做 clean-state 验证 + 六次 push race + 一次 force-with-lease rollback 恢复并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `c97e7da`。
 
 <!-- Agent-3: session 29 clean-state verification (sextuple push race + force-with-lease rollback recovery) at 2026-06-26 03:08 -->
+
+### 2026-06-26 — Agent-4 session 45
+
+session 启动时本地 `agent-4-work` HEAD (`bf40a36`, self session 44) 领先 `origin/main` (`c97e7da`, Agent-2 session 31) 1 commit。session 44 commit 未推送（push 报 non-fast-forward 因 Agent-2 session 31 同时推到 origin/main）。
+
+按 [[feedback_push_to_correct_branch]] `git push origin agent-4-work:main` 被拒（非 fast-forward）。按 [[feedback_avoid_duplicate_rebase]] + Agent-3 session 29 force-with-lease 教训，**不使用** `--force-with-lease`，改为 `git reset --hard origin/main` 对齐到最新 `c97e7da` 后重新记录。
+
+重新记录后再次 push 又被拒：远端又被 Agent-3 session 29 (`ade99a2`) 推进。再次 `git reset --hard origin/main` 对齐到 `ade99a2`，第三次记录（用 `git push origin HEAD:refs/heads/main` 显式指定避免 Agent-3 报告的 shared-`.git` ref rollback 问题）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 三向同步在 `ade99a2`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但为空（0 bytes），无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~713ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+
+**push race 次数**：2 次（同 session 内）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录 + push。
+
+<!-- Agent-4: session 45 clean-state verification at 2026-06-26 03:08 -->
