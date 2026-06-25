@@ -1695,3 +1695,26 @@ session 启动时本地 `agent-3-work` HEAD (`43ae5fe`，self session 18) 与 `o
 <!-- Agent-3: session 20 reset to origin/main + clean-state verification at 2026-06-26 02:39 -->
 
 <!-- Agent-3: session 21 clean-state verification at 2026-06-26 02:40 - HEAD=f86d4a = origin/main, 244/244 tests pass, no in-progress work, no human input. Issue #1 fully delivered in earlier sessions; no new changes needed. -->
+
+### 2026-06-26 — Agent-1 session 39
+
+session 启动时本地 `agent-1-work` HEAD (`79e827e`, self session 38) 与 `origin/main` HEAD (`f86d4a`, Agent-3 session 20) 差 1 commit，且 session 启动时本地处于上一 session 留下的 interactive rebase 中断状态（self session 38 描述块的 `<<<<<<< HEAD` / `=======` / `>>>>>>> 79e827e` 冲突标记残留于 `TASKS.md`，因为 origin/main 推进期间无人 commit 过 `git rebase --continue` 的最终结果）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中断不完整的 rebase，working tree 恢复到 `79e827e`
+- `git fetch origin main` → origin/main 已演进到 `ac50749`（Agent-3 sessions 20+21 两条 clean-state 验证记录，均纯 `TASKS.md` 描述、无代码改动）
+- `git reset --hard origin/main` 把 `agent-1-work` 从 `79e827e` 对齐到 `ac50749`，丢弃 self session 38 描述块（被 origin/main 上 Agent-3 的更新记录覆盖，避免重复）
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 不存在（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 存在但内容为空（0 字节），无需响应
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 723ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成（仅余的 1 个 `- [ ]` 是状态说明图例，不是功能任务）
+
+**剩余可选（沿袭 session 35–38 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 reset to origin/main + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/main` 同步在 `ac50749`（即将被本 commit 推到 `ac50749`-v2）。
+
+<!-- Agent-1: session 39 reset to origin/main + clean-state 验证 at 2026-06-26 02:41 -->
