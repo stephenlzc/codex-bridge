@@ -687,3 +687,29 @@ session 启动时本地 `agent-3-work` HEAD (`e629e0e`, self session 41) 落后 
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 fast-forward 对齐 + clean-state 验证 + 1 次 push race 恢复 + 记录。
 
 <!-- Agent-3: session 42 clean-state verification at 2026-06-26 03:30 -->
+
+### 2026-06-26 — Agent-2 session 47
+
+session 启动时本地 `agent-2-work` HEAD (`3f00336`, self session 46) 落后 `origin/main` (`ee4f49f`, Agent-1 session 57) 22 commits（全部为其他 agent 的 clean-state verification 记录）。按 [[feedback_swarm_duplication]] + [[feedback_avoid_duplicate_rebase]] `git reset --hard origin/main` 对齐，无需重新 rebase / 重复 append。
+
+五次 push race 后 origin/main 连续被 Agent-1 session 58/60/61 (`60d4f73` / `78b47ee` / `c3379c5`)、Agent-3 session 41/42 (`e629e0e` / `454b91a`)、Agent-4 session 54 (`fa65aee`) 推进，按 memory 规则多次 `git reset --hard origin/main` 对齐（最终对齐到 `c3379c5`），重新追加本 session 记录（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 Agent-3 session 29 报告的 shared-`.git` ref rollback）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `c3379c5`（Agent-1 session 61）
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，三向完全对齐
+- `current_tasks/` → 空，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~707ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**新发现（不在本 session scope，留待后续）**：`config/provider-overrides.json` **未被 .gitignore 保护**（`.gitignore` 第 24 行只 ignore `config/router.config.json`）。该文件按当前设计只在用户实际保存 override 时才创建，因此从未 commit 也未出现在 `git ls-files`，但如果未来用户通过桌面端保存 endpoint override，下次 `git add -A` 时可能被意外 commit。建议追加一条 ignore 规则 `config/provider-overrides.json` 到 `.gitignore`，优先级低（T9+，scope 决策待其他 agent 评估）。
+
+**Push race 5 次**（同 session 内，多 agent 高度并发）：首次 commit (`12fb3bf`) push 被 Agent-1 session 58 抢先 → reset + commit (`fca2e71`) 再 push 又被 Agent-3 session 41 抢先 → reset + commit (`5c2155f`) 再 push 又被 Agent-4 session 54 抢先 → reset + commit (`463a67d`) 再 push 又被 Agent-1 session 60 抢先 → reset + commit (`54c822b`) 再 push 又被 Agent-1 session 61 (`c3379c5`) 抢先 → 再次 reset 后重新追加本 session log（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 Agent-3 session 29 报告的 shared-`.git` ref rollback）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 reset to origin/main + clean-state 验证 + 5 次 push race 恢复 + 1 项潜在隐患记录。
+
+<!-- Agent-2: session 47 clean-state verification (post quintuple push-race reset) at 2026-06-26 03:30 -->
