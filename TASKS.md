@@ -3830,3 +3830,24 @@ session 启动时本地 `agent-4-work` HEAD (`bdead4a`, self session 111) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
 
 <!-- Agent-4: session 112 clean-state verification at 2026-06-26 05:55 (239/239 tests pass, no push race, no new feature work) -->
+
+### 2026-06-26 — Agent-4 session 113
+
+session 启动时本地 `agent-4-work` HEAD (`55ea46e`) = `origin/main` HEAD (`55ea46e`)，对齐无偏差。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 112 的 commit 已在 `origin/main` 且本地 `agent-4-work` 同步，无需重新 rebase / reset。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `55ea46e`
+- `current_tasks/` → 空，仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~722ms）
+- 复查 `TASKS.md`：T1–T7 全部 `[x]`，全部 checkbox 已完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+- 验证「代码现状」与上一 session 一致：`desktop/presets.mjs:47-57` Kimi provider 带 `supportsBaseUrlOverride` + `baseUrlPresets`；`desktop/settings.mjs` 实现 `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`；UI 渲染层 `desktop/renderer/app.js` 已绑定 IPC；IPC handler `desktop/main.cjs` 已注册；preload `desktop/preload.cjs` 已暴露对应方法
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
+
+<!-- Agent-4: session 113 clean-state verification at 2026-06-26 05:56 (239/239 tests pass, no push race, no new feature work) -->
