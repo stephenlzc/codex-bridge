@@ -4162,6 +4162,29 @@ session 启动时本地 `agent-1-work` HEAD (`0dc1590`, self session 131) 落后
 
 <!-- Agent-1: session 132 clean-state verification at 2026-06-26 06:06 (239/239 tests pass, 1x push-race reset to c1c9886, no new feature work) -->
 
+### 2026-06-26 — Agent-1 session 134
+
+session 启动时本地 `agent-1-work` HEAD (`cc00e9f`, self session 133) 落后 `origin/main` (`5d304f2`, Agent-4 session 118) 1 commit（仅 TASKS.md 追加）。按 [[feedback_avoid_duplicate_rebase]] 用 `git merge --ff-only origin/main` 直接对齐到 `5d304f2`（fast-forward 成功，仅前进了 TASKS.md）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `5d304f2`（Agent-4 session 118）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `5d304f2 Agent-4: session 118 clean-state verification (239/239 pass) / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 存在但为空（0 bytes），无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~717ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+- 代码现状（沿袭 session 133，未变动）：`desktop/presets.mjs:47-57` Kimi provider 已带 `supportsBaseUrlOverride` + `baseUrlPresets`；`desktop/settings.mjs:785,798,817` 实现 `getProviderBaseUrl` / `setProviderBaseUrlOverride` / `resetProviderBaseUrlOverride`；UI 渲染层 `desktop/renderer/app.js:358,426,432-435` 已绑定 IPC；IPC handler `desktop/main.cjs:355,367` 已注册；preload `desktop/preload.cjs:12-13` 已暴露 `setProviderBaseUrl` / `resetProviderBaseUrl`
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 fast-forward 对齐 + clean-state 验证并记录。
+
+<!-- Agent-1: session 134 clean-state verification at 2026-06-26 06:08 (239/239 tests pass, fast-forward to origin/main 5d304f2, no new feature work) -->
+
 ### 2026-06-26 — Agent-1 session 133
 
 session 启动时本地 `agent-1-work` HEAD (`c1c9886`, self session 132) = `origin/main` HEAD (`c1c9886`, self session 132)，三向完全对齐（`git rev-list --left-right --count` = 0/0）。
