@@ -38,6 +38,10 @@ test("desktop renderer exposes update from sidebar without a dedicated page", ()
   assert.match(rendererSource, /api\.installUpdate\(\)/);
   assert.match(rendererSource, /api\.onUpdateProgress\?\.\(\(progress\) => renderUpdateProgress\(progress\)\)/);
   assert.match(rendererSource, /function renderUpdateProgress/);
+  assert.match(rendererSource, /result\.installerPath \? "launching" : "ready"/);
+  assert.match(rendererSource, /安装到用户程序目录/);
+  assert.match(rendererSource, /正在启动安装器/);
+  assert.match(htmlSource, /Windows 安装器会安装到用户程序目录/);
   assert.match(rendererSource, /bytesPerSecond/);
   assert.match(rendererSource, /formatBytes\(details\.bytesPerSecond\)/);
   assert.match(rendererSource, /\}\/s`/);

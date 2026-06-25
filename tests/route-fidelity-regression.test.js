@@ -224,7 +224,7 @@ test("route fidelity degrades images and files intentionally for chat routes", (
   );
   assert.equal(content[0].text, "summarize all attached context");
   assert.match(content[1].text, /image input omitted because it is too large/);
-  assert.match(content[2].text, /file input not forwarded to chat provider: large-log\.txt/);
+  assert.match(content[2].text, /File attachment unavailable to this chat provider: large-log\.txt/);
   assert.doesNotMatch(JSON.stringify(content), /data:image\/png;base64/);
   assert.doesNotMatch(JSON.stringify(content), /data:text\/plain;base64/);
 });

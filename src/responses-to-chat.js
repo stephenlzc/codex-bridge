@@ -39,6 +39,13 @@ const TOOL_OUTPUT_CONTINUATION_GUIDANCE =
   "CodexBridge tool continuation guidance: the latest user turn contains tool outputs that Codex has already executed. " +
   "If those results satisfy the user's request, return a final concise answer now. " +
   "Do not repeat the same command, restart the same task, or call another tool unless a clearly missing next step remains.";
+const ATTACHMENT_GUIDANCE =
+  "CodexBridge attachment guidance: Chat-routed providers cannot read native Codex file attachments unless CodexBridge forwards an explicit chat file part or extracts text into this request. " +
+  "Use only the attachment text or file parts already included here. " +
+  "Do not call shell, browser, MCP, or local file tools to retrieve unsupported attachments. " +
+  "If needed content is missing, ask the user to switch to a GPT/Responses model or provide text/OCR output.";
+const MAX_EXTRACTABLE_FILE_BYTES = 5_000_000;
+const MAX_EXTRACTED_FILE_TEXT_CHARS = 120_000;
 
 export function responsesToChatRequest(request, route, history) {
   const { messages: sourceMessages, toolContext } =
@@ -109,6 +116,10 @@ export function responseRequestToChatSourceMessages(request, route, history) {
   const toolGuidance = toolGuidanceFromContext(toolContext, request);
   if (toolGuidance) {
     messages.push({ role: "system", content: toolGuidance });
+  }
+  const attachmentGuidance = attachmentGuidanceFromRequest(request);
+  if (attachmentGuidance) {
+    messages.push({ role: "system", content: attachmentGuidance });
   }
   messages.push(...priorMessages, ...currentMessages);
   const sourceMessages = sanitizeMessagesForRoute(normalizeToolCallPairs(messages, {
@@ -250,12 +261,16 @@ export function contentToChatContent(content, route = {}) {
     if (imagePart) {
       return [imagePart];
     }
+    if (isFilePart(content)) {
+      const filePart = filePartToChat(content, route);
+      return filePart.chatPart ? [filePart.chatPart] : filePart.text;
+    }
     return contentToText(content);
   }
 
   const textParts = [];
   const chatParts = [];
-  let hasImage = false;
+  let hasNonTextPart = false;
 
   for (const part of content) {
     if (typeof part === "string") {
@@ -271,8 +286,22 @@ export function contentToChatContent(content, route = {}) {
 
     const imagePart = imagePartToChat(part, route);
     if (imagePart) {
-      hasImage = true;
+      hasNonTextPart = true;
       chatParts.push(imagePart);
+      continue;
+    }
+
+    if (isFilePart(part)) {
+      const filePart = filePartToChat(part, route);
+      if (filePart.chatPart) {
+        hasNonTextPart = true;
+        chatParts.push(filePart.chatPart);
+        continue;
+      }
+      if (filePart.text) {
+        textParts.push(filePart.text);
+        chatParts.push({ type: "text", text: filePart.text });
+      }
       continue;
     }
 
@@ -283,13 +312,6 @@ export function contentToChatContent(content, route = {}) {
       continue;
     }
 
-    if (isFilePart(part)) {
-      const placeholder = `[file input not forwarded to chat provider: ${filePartName(part)}]`;
-      textParts.push(placeholder);
-      chatParts.push({ type: "text", text: placeholder });
-      continue;
-    }
-
     if (part.type && Object.keys(part).length > 0) {
       const json = stringifyJson(part);
       textParts.push(json);
@@ -297,7 +319,7 @@ export function contentToChatContent(content, route = {}) {
     }
   }
 
-  if (hasImage) {
+  if (hasNonTextPart) {
     return chatParts;
   }
   return textParts.filter(Boolean).join("\n");
@@ -319,7 +341,7 @@ export function contentToText(content) {
       return "[image input not forwarded in text-only context]";
     }
     if (isFilePart(content)) {
-      return `[file input not forwarded to chat provider: ${filePartName(content)}]`;
+      return filePartToChat(content).text;
     }
     return stringifyJson(content);
   }
@@ -339,7 +361,7 @@ export function contentToText(content) {
     } else if (isImagePart(part)) {
       parts.push("[image input not forwarded in text-only context]");
     } else if (isFilePart(part)) {
-      parts.push(`[file input not forwarded to chat provider: ${filePartName(part)}]`);
+      parts.push(filePartToChat(part).text);
     } else if (part.type && Object.keys(part).length > 0) {
       parts.push(stringifyJson(part));
     }
@@ -424,6 +446,253 @@ function filePartName(part) {
     part.id ||
     "unnamed file"
   );
+}
+
+function filePartToChat(part, route = {}) {
+  if (shouldForwardFilesToChat(route)) {
+    const file = {};
+    const filename = filePartName(part);
+    if (filename && filename !== "unnamed file") {
+      file.filename = filename;
+    }
+    if (typeof part.file_id === "string" && part.file_id) {
+      file.file_id = part.file_id;
+    }
+    const fileData = part.file_data ?? part.fileData;
+    if (typeof fileData === "string" && fileData) {
+      file.file_data = fileData;
+    }
+    if (file.file_id || file.file_data) {
+      return { chatPart: { type: "file", file } };
+    }
+  }
+
+  const extractedText = extractedFileText(part);
+  if (extractedText) {
+    return { text: extractedText };
+  }
+  return { text: unavailableFileText(part) };
+}
+
+function shouldForwardFilesToChat(route = {}) {
+  if (route?.api === "responses") {
+    return true;
+  }
+  if (route?.forwardFilesToChat === true) {
+    return true;
+  }
+  const modalities = Array.isArray(route?.inputModalities)
+    ? route.inputModalities.map((item) => String(item || "").toLowerCase())
+    : [];
+  return modalities.some((modality) =>
+    ["file", "pdf", "document"].includes(modality),
+  );
+}
+
+function extractedFileText(part) {
+  const fileData = part?.file_data ?? part?.fileData;
+  if (typeof fileData !== "string" || !fileData) {
+    return "";
+  }
+  const parsed = parseDataUrl(fileData);
+  if (!parsed) {
+    return "";
+  }
+  const name = filePartName(part);
+  const mime = (parsed.mime || mimeFromFileName(name)).toLowerCase();
+  let text = "";
+  if (isTextFileMime(mime, name)) {
+    text = parsed.buffer.toString("utf8");
+    if (!looksReadableText(text)) {
+      text = "";
+    }
+  } else if (isPdfFile(mime, name)) {
+    text = extractSimplePdfText(parsed.buffer);
+  }
+  text = normalizeExtractedText(text);
+  if (!text) {
+    return "";
+  }
+  return `[file: ${name} extracted by CodexBridge]\n${text}\n[/file]`;
+}
+
+function parseDataUrl(value) {
+  const match = String(value).match(/^data:([^,]*),(.*)$/is);
+  if (!match) {
+    return null;
+  }
+  const meta = match[1] || "";
+  const payload = match[2] || "";
+  const mime = meta.split(";")[0] || "";
+  try {
+    const estimatedBytes = meta.toLowerCase().includes(";base64")
+      ? Math.floor((payload.length * 3) / 4)
+      : payload.length;
+    if (estimatedBytes > MAX_EXTRACTABLE_FILE_BYTES) {
+      return null;
+    }
+    const buffer = meta.toLowerCase().includes(";base64")
+      ? Buffer.from(payload, "base64")
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+    if (!buffer.length) {
+      return null;
+    }
+    return { mime, buffer };
+  } catch {
+    return null;
+  }
+}
+
+function isTextFileMime(mime, name) {
+  return (
+    mime.startsWith("text/") ||
+    [
+      "application/json",
+      "application/xml",
+      "application/javascript",
+      "application/x-javascript",
+      "application/yaml",
+      "application/x-yaml",
+      "application/toml",
+    ].includes(mime) ||
+    /\.(txt|md|markdown|json|jsonl|csv|tsv|xml|html|css|js|jsx|ts|tsx|mjs|cjs|py|ps1|sh|bat|cmd|toml|yaml|yml|ini|log)$/i.test(name)
+  );
+}
+
+function isPdfFile(mime, name) {
+  return mime === "application/pdf" || /\.pdf$/i.test(name);
+}
+
+function mimeFromFileName(name) {
+  if (/\.pdf$/i.test(name)) {
+    return "application/pdf";
+  }
+  if (/\.(txt|md|markdown|json|jsonl|csv|tsv|xml|html|css|js|jsx|ts|tsx|mjs|cjs|py|ps1|sh|bat|cmd|toml|yaml|yml|ini|log)$/i.test(name)) {
+    return "text/plain";
+  }
+  return "";
+}
+
+function looksReadableText(value) {
+  const text = String(value || "");
+  const sample = text.slice(0, 4096);
+  if (!sample.trim()) {
+    return false;
+  }
+  const replacementChars = (sample.match(/\uFFFD/g) || []).length;
+  if (replacementChars / sample.length > 0.02) {
+    return false;
+  }
+  const controlChars = (sample.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g) || []).length;
+  return controlChars / sample.length <= 0.02;
+}
+
+function extractSimplePdfText(buffer) {
+  const raw = buffer.toString("latin1");
+  if (!/%PDF-\d\.\d/.test(raw) && !/\bBT\b[\s\S]*\bET\b/.test(raw)) {
+    return "";
+  }
+  const parts = [];
+  const streams = raw.match(/stream\r?\n?[\s\S]*?\r?\n?endstream/g) || [raw];
+  for (const stream of streams) {
+    for (const match of stream.matchAll(/\(((?:\\.|[^\\()])*)\)\s*(?:Tj|'|")/g)) {
+      const text = decodePdfLiteral(match[1]);
+      if (text) {
+        parts.push(text);
+      }
+    }
+    for (const match of stream.matchAll(/\[((?:\s*\((?:\\.|[^\\()])*\)\s*)+)\]\s*TJ/g)) {
+      for (const inner of match[1].matchAll(/\((?:\\.|[^\\()])*\)/g)) {
+        const literal = inner[0].slice(1, -1);
+        const text = decodePdfLiteral(literal);
+        if (text) {
+          parts.push(text);
+        }
+      }
+    }
+    for (const match of stream.matchAll(/<([0-9A-Fa-f\s]{4,})>\s*Tj/g)) {
+      const text = decodePdfHexString(match[1]);
+      if (text) {
+        parts.push(text);
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+function decodePdfLiteral(value) {
+  return String(value || "").replace(/\\([nrtbf()\\]|[0-7]{1,3}|.)/g, (_match, escaped) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    if (escaped === "b") return "\b";
+    if (escaped === "f") return "\f";
+    if (escaped === "(") return "(";
+    if (escaped === ")") return ")";
+    if (escaped === "\\") return "\\";
+    if (/^[0-7]{1,3}$/.test(escaped)) {
+      return String.fromCharCode(parseInt(escaped, 8));
+    }
+    return escaped;
+  });
+}
+
+function decodePdfHexString(value) {
+  const hex = String(value || "").replace(/\s+/g, "");
+  if (!hex || hex.length % 2 !== 0) {
+    return "";
+  }
+  try {
+    const buffer = Buffer.from(hex, "hex");
+    if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+      return buffer.subarray(2).toString("utf16le");
+    }
+    return buffer.toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function normalizeExtractedText(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, " ")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim()
+    .slice(0, MAX_EXTRACTED_FILE_TEXT_CHARS);
+}
+
+function unavailableFileText(part) {
+  const name = filePartName(part);
+  const type = isPdfFile(
+    String(part?.mime_type || part?.mimeType || ""),
+    name,
+  )
+    ? "PDF attachment"
+    : "File attachment";
+  return `${type} unavailable to this chat provider: ${name}. CodexBridge did not forward or extract readable text. Ask the user to switch to a GPT/Responses model or provide text/OCR output.`;
+}
+
+function attachmentGuidanceFromRequest(request = {}) {
+  return requestHasFileInput(request.messages ?? request.input) ? ATTACHMENT_GUIDANCE : "";
+}
+
+function requestHasFileInput(input) {
+  if (input === undefined || input === null) {
+    return false;
+  }
+  if (Array.isArray(input)) {
+    return input.some(requestHasFileInput);
+  }
+  if (typeof input !== "object") {
+    return false;
+  }
+  if (isFilePart(input)) {
+    return true;
+  }
+  return requestHasFileInput(input.content ?? input.input ?? input.output);
 }
 
 function systemInstructionsFromRequest(request) {

@@ -33,9 +33,14 @@ test("desktop updater waits for router child process before replacing portable f
   assert.match(main, /blockingPids:\s*\[routerProcess\?\.pid\]\.filter\(Boolean\)/);
 });
 
-test("desktop portable update keeps the current app open and exposes the downloaded package", () => {
+test("desktop update launches installers and keeps portable downloads as manual fallback", () => {
   const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
 
+  assert.match(main, /prepareInstallerUpdate/);
+  assert.match(main, /shell\.openPath\(prepared\.installerPath\)/);
+  assert.match(main, /phase:\s*"launching"/);
+  assert.match(main, /installerPath:\s*prepared\.installerPath/);
+  assert.match(main, /preparePortableUpdate/);
   assert.match(main, /Update package ready for manual install/);
   assert.match(main, /phase:\s*"ready"/);
   assert.match(main, /shell\.showItemInFolder\(prepared\.downloadPath\)/);
@@ -92,16 +97,37 @@ test("Windows release archive uses formal portable package naming", () => {
   );
 
   assert.match(workflow, /CodexBridge-Windows-x64-Portable\.zip/);
+  assert.match(workflow, /CodexBridge-Windows-x64-Setup\.exe/);
   assert.match(workflow, /releases\/latest\/download\/CodexBridge-Windows-x64-Portable\.zip/);
+  assert.match(workflow, /releases\/latest\/download\/CodexBridge-Windows-x64-Setup\.exe/);
+  assert.match(workflow, /choco install nsis -y/);
+  assert.match(workflow, /makensis/);
+  assert.match(workflow, /CodexBridge\.nsi/);
   assert.match(workflow, /Smoke test Windows release archive/);
   assert.match(workflow, /CodexBridge\.exe/);
   assert.match(workflow, /Join-Path \$appPath\.FullName "\*"/);
   assert.doesNotMatch(workflow, /Compress-Archive -Path "release\/\*"/);
   assert.match(workflow, /prerelease: false/);
   assert.doesNotMatch(workflow, /CodexBridge-windows-portable/);
+  assert.match(workflow, /files: dist-artifacts\/\*/);
   assert.match(packager, /CODEXBRIDGE_RELEASE_VERSION/);
   assert.match(packager, /CodexBridge-Windows-x64-Portable-/);
   assert.match(packager, /codexbridge-icon\.ico/);
+});
+
+test("Windows installer script installs a versioned app and does not batch-delete", () => {
+  const installer = fs.readFileSync(
+    path.join(process.cwd(), "scripts", "installer", "windows", "CodexBridge.nsi"),
+    "utf8",
+  );
+
+  assert.match(installer, /InstallDir "\$LOCALAPPDATA\\Programs\\CodexBridge"/);
+  assert.match(installer, /SetOutPath "\$INSTDIR\\app-\$\{VERSION\}"/);
+  assert.match(installer, /File \/r "\$\{APP_DIR\}\\\*\.\*"/);
+  assert.match(installer, /CreateShortCut/);
+  assert.match(installer, /WriteRegStr HKCU "Software\\CodexBridge" "CurrentVersion"/);
+  assert.match(installer, /ExecShell "" "\$INSTDIR\\app-\$\{VERSION\}\\CodexBridge\.exe" "--updated"/);
+  assert.doesNotMatch(installer, /RMDir\s+\/r|Delete\s+\/REBOOTOK|Remove-Item\s+-Recurse|rm\s+-rf|rmdir\s+\/s|rd\s+\/s|del\s+\/s/i);
 });
 
 test("macOS release archives use formal x64 and arm64 package naming", () => {

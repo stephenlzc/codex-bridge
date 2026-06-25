@@ -19,6 +19,12 @@ const release = {
   body: "Release notes",
   assets: [
     {
+      name: "CodexBridge-Windows-x64-Setup.exe",
+      browser_download_url:
+        "https://github.com/wangzhezbz/codex-bridge/releases/download/v0.1.66/CodexBridge-Windows-x64-Setup.exe",
+      size: 146000000,
+    },
+    {
       name: "CodexBridge-Windows-x64-Portable.zip",
       browser_download_url:
         "https://github.com/wangzhezbz/codex-bridge/releases/download/v0.1.66/CodexBridge-Windows-x64-Portable.zip",
@@ -46,8 +52,8 @@ test("updater compares release versions without string-order mistakes", () => {
   assert.equal(isNewerVersion("v0.2.0", "0.1.99"), true);
 });
 
-test("updater selects the portable asset for the current platform", () => {
-  assert.equal(assetNameForPlatform("win32", "x64"), "CodexBridge-Windows-x64-Portable.zip");
+test("updater selects the preferred install asset for the current platform", () => {
+  assert.equal(assetNameForPlatform("win32", "x64"), "CodexBridge-Windows-x64-Setup.exe");
   assert.equal(assetNameForPlatform("darwin", "arm64"), "CodexBridge-macOS-arm64-Portable.zip");
   assert.equal(assetNameForPlatform("darwin", "x64"), "CodexBridge-macOS-x64-Portable.zip");
   assert.equal(assetNameForPlatform("linux", "x64"), null);
@@ -64,8 +70,26 @@ test("updater plans a direct install from the latest matching release asset", ()
   assert.equal(plan.ok, true);
   assert.equal(plan.updateAvailable, true);
   assert.equal(plan.latestVersion, "0.1.66");
-  assert.equal(plan.asset.name, "CodexBridge-Windows-x64-Portable.zip");
+  assert.equal(plan.asset.name, "CodexBridge-Windows-x64-Setup.exe");
+  assert.equal(plan.asset.kind, "installer");
   assert.match(plan.asset.downloadUrl, /v0\.1\.66/);
+});
+
+test("updater falls back to the portable asset when no installer is published", () => {
+  const portableOnlyRelease = {
+    ...release,
+    assets: release.assets.filter((asset) => asset.name !== "CodexBridge-Windows-x64-Setup.exe"),
+  };
+  const plan = planReleaseUpdate({
+    currentVersion: "0.1.65",
+    platform: "win32",
+    arch: "x64",
+    release: portableOnlyRelease,
+  });
+
+  assert.equal(plan.ok, true);
+  assert.equal(plan.asset.name, "CodexBridge-Windows-x64-Portable.zip");
+  assert.equal(plan.asset.kind, "portable");
 });
 
 test("updater reports current and unsupported states clearly", () => {
@@ -162,9 +186,9 @@ test("updater falls back to GitHub latest redirect when release API is rate limi
   ]);
   assert.equal(latest.tag_name, "v0.1.94");
   assert.equal(
-    latest.assets.find((asset) => asset.name === "CodexBridge-Windows-x64-Portable.zip")
+    latest.assets.find((asset) => asset.name === "CodexBridge-Windows-x64-Setup.exe")
       ?.browser_download_url,
-    "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip",
+    "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Setup.exe",
   );
 
   const plan = planReleaseUpdate({
@@ -176,6 +200,7 @@ test("updater falls back to GitHub latest redirect when release API is rate limi
   assert.equal(plan.ok, true);
   assert.equal(plan.updateAvailable, true);
   assert.equal(plan.latestVersion, "0.1.94");
+  assert.equal(plan.asset.kind, "installer");
 });
 
 test("Windows portable updater script replaces and restarts without batch deletion", () => {

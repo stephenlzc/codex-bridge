@@ -287,8 +287,179 @@ test("chat conversion keeps file inputs visible when chat provider cannot forwar
 
   assert.equal(
     converted.body.messages.at(-1).content,
-    "summarize this file\n[file input not forwarded to chat provider: brief.pdf]",
+    "summarize this file\nPDF attachment unavailable to this chat provider: brief.pdf. CodexBridge did not forward or extract readable text. Ask the user to switch to a GPT/Responses model or provide text/OCR output.",
   );
+});
+
+test("chat conversion injects extracted text file data instead of a raw file placeholder", () => {
+  const fileData = `data:text/plain;base64,${Buffer.from("route notes\nkeep tools working", "utf8").toString("base64")}`;
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this file" },
+            {
+              type: "input_file",
+              filename: "notes.txt",
+              file_data: fileData,
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  const payload = JSON.stringify(converted.body.messages);
+  assert.match(payload, /CodexBridge attachment guidance/);
+  assert.match(converted.body.messages.at(-1).content, /\[file: notes\.txt extracted by CodexBridge\]/);
+  assert.match(converted.body.messages.at(-1).content, /route notes/);
+  assert.match(converted.body.messages.at(-1).content, /keep tools working/);
+  assert.doesNotMatch(payload, /data:text\/plain;base64/);
+  assert.doesNotMatch(payload, /file input not forwarded/);
+});
+
+test("chat conversion extracts simple text from PDF file data when possible", () => {
+  const simplePdf = Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<<>>\nstream\nBT /F1 12 Tf 72 720 Td (Hello PDF route plan) Tj ET\nendstream\nendobj\n%%EOF\n",
+    "latin1",
+  );
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this pdf" },
+            {
+              type: "input_file",
+              filename: "brief.pdf",
+              file_data: `data:application/pdf;base64,${simplePdf.toString("base64")}`,
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  const payload = JSON.stringify(converted.body.messages);
+  assert.match(payload, /CodexBridge attachment guidance/);
+  assert.match(converted.body.messages.at(-1).content, /\[file: brief\.pdf extracted by CodexBridge\]/);
+  assert.match(converted.body.messages.at(-1).content, /Hello PDF route plan/);
+  assert.doesNotMatch(payload, /data:application\/pdf;base64/);
+});
+
+test("chat conversion tells chat models not to tool-loop for unavailable PDFs", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this pdf" },
+            {
+              type: "input_file",
+              filename: "scan.pdf",
+              file_data: "data:application/pdf;base64,not-a-real-pdf",
+            },
+          ],
+        },
+      ],
+      tools: [
+        {
+          type: "function",
+          name: "shell_command",
+          description: "Run shell.",
+          parameters: {
+            type: "object",
+            properties: { command: { type: "string" } },
+            required: ["command"],
+          },
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  const guidance = converted.body.messages.find((message) =>
+    String(message.content || "").includes("CodexBridge attachment guidance"),
+  );
+  assert.ok(guidance);
+  assert.match(guidance.content, /Do not call shell, browser, MCP, or local file tools/);
+  assert.match(converted.body.messages.at(-1).content, /PDF attachment unavailable to this chat provider: scan\.pdf/);
+  assert.match(converted.body.messages.at(-1).content, /switch to a GPT\/Responses model/);
+});
+
+test("chat conversion refuses oversized file data instead of forwarding or decoding it", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize the giant attachment" },
+            {
+              type: "input_file",
+              filename: "giant.txt",
+              file_data: `data:text/plain;base64,${"a".repeat(6_700_000)}`,
+            },
+          ],
+        },
+      ],
+    },
+    route,
+    new ResponseHistory(),
+  );
+
+  const payload = JSON.stringify(converted.body.messages);
+  assert.match(converted.body.messages.at(-1).content, /File attachment unavailable to this chat provider: giant\.txt/);
+  assert.match(payload, /CodexBridge attachment guidance/);
+  assert.doesNotMatch(payload, /data:text\/plain;base64/);
+  assert.ok(payload.length < 2000, "oversized file data must not be copied into the chat payload");
+});
+
+test("chat conversion forwards files only for explicit chat file-capable routes", () => {
+  const converted = responsesToChatRequest(
+    {
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this file" },
+            {
+              type: "input_file",
+              filename: "brief.pdf",
+              file_data: "data:application/pdf;base64,abc123",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      ...route,
+      custom: true,
+      provider: "custom",
+      inputModalities: ["text", "file"],
+    },
+    new ResponseHistory(),
+  );
+
+  assert.deepEqual(converted.body.messages.at(-1).content, [
+    { type: "text", text: "summarize this file" },
+    {
+      type: "file",
+      file: {
+        filename: "brief.pdf",
+        file_data: "data:application/pdf;base64,abc123",
+      },
+    },
+  ]);
 });
 
 test("chat conversion preserves compacted context summaries as user context", () => {

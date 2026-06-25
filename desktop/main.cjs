@@ -603,6 +603,33 @@ ipcMain.handle("updates:install", async () => {
   if (!plan.updateAvailable) {
     throw new Error("当前已经是最新版本。");
   }
+  if (plan.asset?.kind === "installer") {
+    const prepared = await prepareInstallerUpdate(updater, plan, emitUpdateProgress);
+    appendLog(`Update installer downloaded: ${prepared.installerPath}`);
+    emitUpdateProgress({
+      phase: "launching",
+      downloadedBytes: plan.asset?.size || 0,
+      totalBytes: plan.asset?.size || 0,
+      percent: 100,
+      message: "Update installer downloaded; launching installer.",
+    });
+    const openError = await shell.openPath(prepared.installerPath);
+    if (openError) {
+      appendRuntimeLog(`openUpdateInstaller: ${openError}`);
+      try {
+        shell.showItemInFolder(prepared.installerPath);
+      } catch (error) {
+        appendRuntimeLog(formatError("showUpdateInstaller", error));
+      }
+      throw new Error(`Unable to launch update installer: ${openError}`);
+    }
+    return {
+      ok: true,
+      message: `Downloaded CodexBridge ${plan.latestVersion} installer. Follow the installer to finish updating; the current app may stay open until the installer launches the new version.`,
+      latestVersion: plan.latestVersion,
+      installerPath: prepared.installerPath,
+    };
+  }
   const prepared = await preparePortableUpdate(updater, plan, emitUpdateProgress);
   appendLog(`Update package downloaded: ${prepared.downloadPath}`);
   appendLog(`Update package ready for manual install: ${prepared.downloadPath}`);
@@ -684,6 +711,30 @@ function stopRouter(options = {}) {
   }
   routerProcess.kill();
   routerProcess = null;
+}
+
+async function prepareInstallerUpdate(updater, plan, onProgress) {
+  const updatesDir = portableUpdatesDir();
+  fs.mkdirSync(updatesDir, { recursive: true });
+  const stamp = new Date()
+    .toISOString()
+    .replaceAll(":", "")
+    .replaceAll(".", "")
+    .replace("T", "-")
+    .replace("Z", "");
+  const installerPath = path.join(updatesDir, `${stamp}-${plan.asset.name}`);
+  const proxyLabel = updater.updateDownloadProxyLabel?.(plan.asset.downloadUrl) || "";
+  appendLog(
+    proxyLabel
+      ? `Update installer download using proxy ${proxyLabel}.`
+      : "Update installer download using direct GitHub connection.",
+  );
+  await downloadFile(plan.asset.downloadUrl, installerPath, {
+    expectedBytes: plan.asset.size,
+    fetchInitForDownload: updater.fetchInitForUpdateDownload,
+    onProgress,
+  });
+  return { installerPath };
 }
 
 async function preparePortableUpdate(updater, plan, onProgress) {

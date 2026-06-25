@@ -7,23 +7,40 @@ export const GITHUB_LATEST_RELEASE_PAGE_URL =
 export const GITHUB_LATEST_DOWNLOAD_BASE_URL =
   "https://github.com/wangzhezbz/codex-bridge/releases/latest/download";
 
-const RELEASE_ASSET_NAMES = [
-  "CodexBridge-Windows-x64-Portable.zip",
-  "CodexBridge-macOS-arm64-Portable.zip",
-  "CodexBridge-macOS-x64-Portable.zip",
+const RELEASE_ASSETS = [
+  {
+    name: "CodexBridge-Windows-x64-Setup.exe",
+    platform: "win32",
+    arch: "x64",
+    kind: "installer",
+  },
+  {
+    name: "CodexBridge-Windows-x64-Portable.zip",
+    platform: "win32",
+    arch: "x64",
+    kind: "portable",
+  },
+  {
+    name: "CodexBridge-macOS-arm64-Portable.zip",
+    platform: "darwin",
+    arch: "arm64",
+    kind: "portable",
+  },
+  {
+    name: "CodexBridge-macOS-x64-Portable.zip",
+    platform: "darwin",
+    arch: "x64",
+    kind: "portable",
+  },
 ];
+const RELEASE_ASSET_NAMES = RELEASE_ASSETS.map((asset) => asset.name);
 
 export function assetNameForPlatform(platform = process.platform, arch = process.arch) {
-  if (platform === "win32" && arch === "x64") {
-    return "CodexBridge-Windows-x64-Portable.zip";
-  }
-  if (platform === "darwin" && arch === "arm64") {
-    return "CodexBridge-macOS-arm64-Portable.zip";
-  }
-  if (platform === "darwin" && arch === "x64") {
-    return "CodexBridge-macOS-x64-Portable.zip";
-  }
-  return null;
+  return assetCandidatesForPlatform(platform, arch)[0]?.name || null;
+}
+
+function assetCandidatesForPlatform(platform = process.platform, arch = process.arch) {
+  return RELEASE_ASSETS.filter((asset) => asset.platform === platform && asset.arch === arch);
 }
 
 export function isNewerVersion(latestTag, currentVersion) {
@@ -48,9 +65,9 @@ export function planReleaseUpdate({
   arch = process.arch,
   release,
 } = {}) {
-  const assetName = assetNameForPlatform(platform, arch);
+  const assetCandidates = assetCandidatesForPlatform(platform, arch);
   const latestVersion = normalizeVersion(release?.tag_name || release?.name || "");
-  if (!assetName) {
+  if (!assetCandidates.length) {
     return {
       ok: false,
       updateAvailable: false,
@@ -66,7 +83,11 @@ export function planReleaseUpdate({
       message: "没有读取到可用的 GitHub Release。",
     };
   }
-  const asset = (release.assets || []).find((item) => item?.name === assetName);
+  const releaseAssets = release.assets || [];
+  const candidate = assetCandidates.find((assetInfo) =>
+    releaseAssets.some((item) => item?.name === assetInfo.name && item?.browser_download_url),
+  );
+  const asset = releaseAssets.find((item) => item?.name === candidate?.name);
   if (!asset?.browser_download_url) {
     return {
       ok: false,
@@ -86,6 +107,7 @@ export function planReleaseUpdate({
     releaseNotes: release.body || "",
     asset: {
       name: asset.name,
+      kind: candidate.kind,
       size: Number(asset.size || 0),
       downloadUrl: asset.browser_download_url,
     },

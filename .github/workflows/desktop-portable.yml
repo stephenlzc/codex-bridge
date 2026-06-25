@@ -76,7 +76,11 @@ jobs:
       - name: Smoke test packaged Windows app
         run: npm run package:win:smoke
 
-      - name: Create Windows release archive
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y
+
+      - name: Create Windows release artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "dist-artifacts" | Out-Null
@@ -87,6 +91,21 @@ jobs:
             throw "Could not find packaged CodexBridge-win32-x64 directory."
           }
           Compress-Archive -Path (Join-Path $appPath.FullName "*") -DestinationPath "dist-artifacts/CodexBridge-Windows-x64-Portable.zip" -Force
+          $version = (Get-Content -LiteralPath "package.json" | ConvertFrom-Json).version
+          $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
+          $makensis = Join-Path $programFilesX86 "NSIS\makensis.exe"
+          if (-not (Test-Path -LiteralPath $makensis)) {
+            $makensis = "makensis"
+          }
+          $outFile = Join-Path (Resolve-Path "dist-artifacts").Path "CodexBridge-Windows-x64-Setup.exe"
+          $iconPath = (Resolve-Path "desktop\assets\codexbridge-icon.ico").Path
+          & $makensis "/DVERSION=$version" "/DAPP_DIR=$($appPath.FullName)" "/DOUT_FILE=$outFile" "/DICON_PATH=$iconPath" "scripts\installer\windows\CodexBridge.nsi"
+          if ($LASTEXITCODE -ne 0) {
+            throw "makensis failed with exit code $LASTEXITCODE."
+          }
+          if (-not (Test-Path -LiteralPath $outFile)) {
+            throw "Windows installer was not created."
+          }
 
       - name: Smoke test Windows release archive
         shell: pwsh
@@ -105,11 +124,13 @@ jobs:
           $env:CODEXBRIDGE_DATA_DIR = Join-Path $env:RUNNER_TEMP "codexbridge-release-archive-data"
           & $exe.FullName
 
-      - name: Upload Windows portable app
+      - name: Upload Windows release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CodexBridge-Windows-x64-Portable
-          path: dist-artifacts/CodexBridge-Windows-x64-Portable.zip
+          name: CodexBridge-Windows-x64
+          path: |
+            dist-artifacts/CodexBridge-Windows-x64-Portable.zip
+            dist-artifacts/CodexBridge-Windows-x64-Setup.exe
 
   macos:
     name: macOS ${{ matrix.arch }}
@@ -173,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download portable artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
@@ -186,7 +207,10 @@ jobs:
           make_latest: true
           generate_release_notes: true
           body: |
-            Windows:
+            Windows installer:
+            https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-Windows-x64-Setup.exe
+
+            Windows portable fallback:
             https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-Windows-x64-Portable.zip
 
             Mac M series:
@@ -194,4 +218,4 @@ jobs:
 
             Mac Intel:
             https://github.com/${{ github.repository }}/releases/latest/download/CodexBridge-macOS-x64-Portable.zip
-          files: dist-artifacts/*.zip
+          files: dist-artifacts/*

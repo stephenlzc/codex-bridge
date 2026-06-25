@@ -1,7 +1,8 @@
 # Windows Setup / Windows 配置指南
 
-This guide is for developers running from source. Win users and Mac users should download a portable build instead:
+This guide is for developers running from source. Win users should download the installer; the portable zip remains a fallback:
 
+[CodexBridge-Windows-x64-Setup.exe](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Setup.exe)
 [CodexBridge-Windows-x64-Portable.zip](https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip)
 
 Mac users:

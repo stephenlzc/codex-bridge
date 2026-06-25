@@ -5,17 +5,24 @@ import path from "node:path";
 
 const latestPortableUrl =
   "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Portable.zip";
+const latestInstallerUrl =
+  "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-Windows-x64-Setup.exe";
 const latestMacArm64Url =
   "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-arm64-Portable.zip";
 const latestMacX64Url =
   "https://github.com/wangzhezbz/codex-bridge/releases/latest/download/CodexBridge-macOS-x64-Portable.zip";
 
 test("public docs use the stable latest Windows download link", () => {
-  for (const file of ["README.md", path.join("docs", "windows-portable.md"), path.join("docs", "releases.md")]) {
+  for (const file of ["README.md", path.join("docs", "releases.md"), path.join("docs", "windows-setup.md")]) {
     const text = fs.readFileSync(path.join(process.cwd(), file), "utf8");
+    assert.match(text, new RegExp(escapeRegExp(latestInstallerUrl)), `${file} should link latest installer build`);
     assert.match(text, new RegExp(escapeRegExp(latestPortableUrl)), `${file} should link latest portable build`);
     assert.doesNotMatch(text, /CodexBridge-windows-portable/i, `${file} should not use the old package name`);
   }
+
+  const portableDoc = fs.readFileSync(path.join(process.cwd(), "docs", "windows-portable.md"), "utf8");
+  assert.match(portableDoc, new RegExp(escapeRegExp(latestPortableUrl)));
+  assert.doesNotMatch(portableDoc, /CodexBridge-windows-portable/i);
 });
 
 test("public docs use stable latest macOS download links", () => {
@@ -45,7 +52,8 @@ test("user-facing docs separate Win users and Mac users", () => {
 test("top-level download sections use simple platform labels", () => {
   for (const file of ["README.md", path.join("docs", "releases.md")]) {
     const text = fs.readFileSync(path.join(process.cwd(), file), "utf8");
-    assert.match(text, /- Windows: \[CodexBridge-Windows-x64-Portable\.zip\]/, `${file} should use a simple Windows label`);
+    assert.match(text, /- Windows installer: \[CodexBridge-Windows-x64-Setup\.exe\]/, `${file} should use a simple Windows installer label`);
+    assert.match(text, /- Windows portable fallback: \[CodexBridge-Windows-x64-Portable\.zip\]/, `${file} should use a simple Windows portable fallback label`);
     assert.match(text, /- Mac M series: \[CodexBridge-macOS-arm64-Portable\.zip\]/, `${file} should use a simple Mac M label`);
     assert.match(text, /- Mac Intel: \[CodexBridge-macOS-x64-Portable\.zip\]/, `${file} should use a simple Mac Intel label`);
     assert.doesNotMatch(text, /Win users\s*\/\s*Win/i, `${file} should not duplicate Win labels`);

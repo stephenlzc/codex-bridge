@@ -201,6 +201,7 @@ els.checkUpdates.addEventListener("click", () =>
       showToast("已取消更新。");
       return;
     }
+    const installerUpdate = updatePlan.asset?.kind === "installer";
     setUpdateDialogBusy(true);
     renderUpdateProgress({
       phase: "checking",
@@ -208,11 +209,15 @@ els.checkUpdates.addEventListener("click", () =>
       totalBytes: updatePlan.asset?.size || 0,
       percent: 0,
     });
-    showToast("正在下载更新包，完成后会打开更新目录。");
+    showToast(
+      installerUpdate
+        ? "正在下载安装器，完成后会自动打开安装程序。"
+        : "正在下载更新包，完成后会打开更新目录。",
+    );
     try {
       const result = await api.installUpdate();
       renderUpdateProgress({
-        phase: "ready",
+        phase: result.installerPath ? "launching" : "ready",
         downloadedBytes: updatePlan.asset?.size || 0,
         totalBytes: updatePlan.asset?.size || 0,
         percent: 100,
@@ -1065,9 +1070,14 @@ function renderLogs(logs) {
 
 function showUpdateDialog(updatePlan) {
   return new Promise((resolve) => {
+    const installerUpdate = updatePlan.asset?.kind === "installer";
     els.updateDialogVersion.textContent = `v${updatePlan.latestVersion || ""}`;
     els.updateDialogMessage.textContent =
       "下载完成后会保存到当前程序旁边的 updates 目录，并打开文件夹。";
+    if (installerUpdate) {
+      els.updateDialogMessage.textContent =
+        "下载完成后会启动 Windows 安装器；安装器会安装到用户程序目录并启动新版。";
+    }
     els.updateDialogAsset.textContent = updatePlan.asset
       ? `${updatePlan.asset.name} · ${formatBytes(updatePlan.asset.size)}`
       : "未读取到更新包信息";
@@ -1162,6 +1172,9 @@ function updateProgressText(phase, details) {
   }
   if (phase === "ready") {
     return "下载完成，更新包已保存在 updates 目录。";
+  }
+  if (phase === "launching") {
+    return "下载完成，正在启动安装器...";
   }
   if (phase === "error") {
     return "更新失败，请稍后重试。";
