@@ -1234,7 +1234,23 @@ session 启动时本地 `agent-3-work` HEAD (`dddd113`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 fast-forward 对齐（三重 reset）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `7a76f8c`。
 
 <!-- Agent-3: session 15 fast-forward + clean-state verification at 2026-06-26 02:22 -->
-11. 复查最近 10 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成。
+
+### 2026-06-26 Agent-4 session 18
+
+session 启动时本地 `agent-4-work` HEAD (`aa4376e`) 与 `origin/main` HEAD (`f4183c4`) 不一致——本地 behind origin/main 1 commit（Agent-4 session 17 的 rebase 收尾记录）。
+
+**Session 范围**：rebase 收尾 + clean-state 验证。
+
+**本 session 操作**：
+- `git fetch origin main` 后发现 origin/main 已推进到 `6bec4c1`（Agent-1 session 21 + Agent-2 session 21），本地 `agent-4-work` 还停在 `aa4376e`。
+- 解决 `TASKS.md` rebase 冲突：保留 self session 17 + Agent-1 session 21 + Agent-2 session 21 三方描述块。
+- `git rebase --continue` 完成 rebase（`bce9ec8`）。
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消。
+- `git status` → clean。
+- `current_tasks/` → 仅含 `.gitkeep`，无 lock 文件。
+- `HUMAN_INPUT.md` → 不存在。
+- `TASKS.md` → T1–T8 全部 `[x]`，33 个 checkbox 已全部完成。
+- 复查最近 10 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成。
 
 **剩余可选（沿袭 session 2/9/11/12/13/14/15/16/17 的判断，继续不做）**：
 - `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
@@ -1272,3 +1288,28 @@ session 启动时本地 `agent-4-work` 处于上一 session 留下的 interactiv
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做两次 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `4d6b039`（1 个 commit ahead）。
 
 <!-- Agent-4: session 19 rebase resolution + clean-state verification at 2026-06-26 02:25 -->
+
+### 2026-06-26 Agent-1 session 27
+
+session 启动时本地 `agent-1-work` HEAD (`7a76f8c`) 与 `origin/main` HEAD (`3aecf02`) 不一致——本地 ahead of origin/main 1 commit（self session 26 clean-state 验证记录），但 origin/main 已 fast-forward 到 `7a76f8c`（self session 26 后）之前已包含该 commit。
+
+**Session 范围**：rebase 收尾 + clean-state 验证 + 停滞条件检查。
+
+**本 session 操作**：
+- `git fetch origin main`：远端 HEAD = `8c65055`（Agent-3 session 15，fast-forward 包含 self session 24/25/26）
+- `git status`：检出 `agent-1-work` 处于 interactive rebase 状态（self session 27 的 pick 672a1bf 尚未 apply）
+- 解决 `TASKS.md` 冲突：保留 self session 26 验证块 + Agent-3 session 15 验证块（两者独立 session 记录，按时间顺序拼接）
+- `git rebase --continue` 完成（`51aef3f`），`origin/main` 期间又演进到 `408b666`（Agent-4 sessions 18/19）
+- 再次 rebase `origin/main` 解决 self session 27 + Agent-4 session 19 的 `TASKS.md` 冲突（按时间顺序拼接所有 4 个 session 块）
+- `current_tasks/` → 不存在 / 空（无 lock 文件）
+- `HUMAN_INPUT.md` → 存在但为空
+- `npm run check`：**244/244 通过**，0 失败/0 跳过/0 取消（duration ~700ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+
+**剩余可选（沿袭 session 16–26 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做两次 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 将与 `origin/main` 同步在 `408b666 + 1`。
+
+<!-- Agent-1: session 27 rebase reconciliation + clean-state verification at 2026-06-26 02:24 -->
