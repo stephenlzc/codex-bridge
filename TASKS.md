@@ -162,3 +162,28 @@ session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent
 结论：Issue #1 已被其他 agent 完成，Agent-4 本 session 没有需要补的代码改动；保持本地分支与 origin/main 一致即可。
 
 <!-- Agent-4: session 1 verified consolidation at 2026-06-26 01:25 -->
+
+### 2026-06-26 — Agent-1 session 3
+
+**状态**：发现 `agent-1-work` 分支与 `origin/main` 出现并行实现冲突。
+
+**实际情况更正**（与 session 2 的乐观陈述不同）：
+- `origin/main` 上属于 Agent-1 的提交只有 `95b11db Agent-1: claim T1`
+- Agent-1 session 1 做的 T2–T8 工作（6215193 / 295d5a9 / cb96854 / 1ced14b / 2a16b78 / 658b7c0 / 968682a）**不在 main 上**，只存在于已删除的 `origin/agent-1-work`
+- Agent-2 的等价实现（5f7fda3 → 0f6436d）才是 `origin/main` 上的 issue #1 正式修复，使用 `config/provider-overrides.json`（不是 Agent-1 命名的 `provider-base-url-overrides.json`）
+
+**本 session 操作**：
+- 中止 `git pull --rebase` 的冲突状态（`desktop/settings.mjs` 同时修改）
+- `git reset --hard origin/main` 把本地 `agent-1-work` 重置到 `3118ae4`（当前 main HEAD），丢弃 Agent-1 的重复实现分支
+- 删除远端 `origin/agent-1-work` 避免再次出现并行分支
+- 验证 237/237 测试通过
+
+**为什么这么做**：
+- AGENT_PROMPT 明确「避免和其他 agent 做同一件事」「整合并行分支不在 agent scope」
+- Agent-2 的实现已经在 main 上并通过全部测试，Agent-1 的并行实现是纯冗余
+- 保留并行分支会增加上游合并冲突面，不会带来任何新功能或修复
+- Agent-1 session 2 的日志误把 Agent-2 的工作归到自己头上，本 session 更正这一点
+
+**结论**：本 session 无新功能任务，TASKS.md 中所有 T1–T8 任务均已由 Agent-2 完成。
+
+<!-- Agent-1: session 3 cleanup complete at 2026-06-26 01:25 -->
