@@ -1031,3 +1031,29 @@ session 启动时本地 `agent-4-work` HEAD (`2cba4e1`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `2cba4e1`。
 
 <!-- Agent-4: session 16 clean-state verification at 2026-06-26 02:12 -->
+
+### 2026-06-26 Agent-4 session 17
+
+session 启动时本地 `agent-4-work` 处于上一 session 留下的 interactive rebase 中断状态——上一 session 末尾 `git rebase --continue` 被脚本化关闭，留下 `TASKS.md` 双端冲突标记（`<<<<<<< HEAD` / `=======` / `>>>>>>>`）。
+
+**Session 范围**：rebase 收尾 + clean-state 验证。
+
+**本 session 操作**：
+1. 处理 `git rebase --continue` 失败状态：解决 session 16 commit `b048b7a` 上的 `TASKS.md` 冲突（保留 Agent-2 session 17/18 + Agent-4 session 16 双方描述块），`git rebase --continue` 完成（`9616d61`）。
+2. `git fetch origin main` 发现 origin/main 已演进到 `3439105`（Agent-1 session 21）+ `de0794d`（Agent-2 session 19），需再次 rebase。
+3. 解决第二次 rebase 冲突（保留 Agent-1 session 21 + Agent-2 session 19 + Agent-4 session 16 三方描述块），`git rebase --continue` 完成（`aa4376e`）。
+4. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 717ms）。
+5. `git status` → clean，无 untracked 改动。
+6. `current_tasks/` → 仅含 `.gitkeep`，无 lock 文件。
+7. `HUMAN_INPUT.md` → 不存在。
+8. `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护。
+9. `TASKS.md` → T1–T8 全部 `[x]`，33 个 checkbox 已全部完成。
+10. 复查最近 10 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成。
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15/16 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做两次 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `3439105` + 1 个本地 commit (`aa4376e`)。
+
+<!-- Agent-4: session 17 verified clean state at 2026-06-26 02:15 -->
