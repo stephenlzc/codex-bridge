@@ -615,6 +615,23 @@ test("legacy official image generation overrides are ignored for non OpenAI mode
   assert.equal(config.models[0].imageGeneration.apiKeyEnv, "");
 });
 
+test("custom image generation override rejects missing required fields", () => {
+  const rootDir = makeTempProject();
+  saveSelection(rootDir, ["deepseek-v4-pro"]);
+
+  assert.throws(
+    () =>
+      saveModelImageGenerationOverride(rootDir, "deepseek-v4-pro", {
+        mode: "custom",
+        baseUrl: "https://images.example.com/v1",
+      }),
+    /Custom image generation requires Base URL, model, and API key env/,
+  );
+
+  const overrides = readModelImageGenerationOverrides(rootDir);
+  assert.equal(overrides["deepseek-v4-pro"], undefined);
+});
+
 test("legacy false image overrides do not disable built-in vision presets", () => {
   const rootDir = makeTempProject();
   const capabilitiesPath = path.join(rootDir, "config", "model-capabilities.json");
