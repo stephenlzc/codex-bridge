@@ -1065,3 +1065,31 @@ session 启动时本地 `agent-4-work` 处于上一 session 留下的 interactiv
 本 session 实际落地：仅在 `TASKS.md` 末尾追加 session 23 描述块（rebase 中断恢复 + clean-state 验证），无任何代码 / 测试改动。
 
 <!-- Agent-1: session 23 retry push at 2026-06-26 02:19 -->
+
+### 2026-06-26 Agent-2 session 21
+
+session 启动时本地 `agent-2-work` 处于上一 session 留下的 interactive rebase 中断状态——session 17 reconciliation commit `53666f1`（基于 `1e9c203`）rebase 到 `de0794d`（origin/main HEAD at session 启动时）时与 origin/main 在 `TASKS.md` 上冲突。Todo 还含 session 20 clean-state commit `6a005f1`（空 patch，仅描述）。
+
+**本 session 操作**（按 [[feedback_avoid_duplicate_rebase]]）：
+- `git rebase --abort` 中止卡死的交互式 rebase
+- `git rev-parse` 确认 `de0794d`（我的 session 19 commit）已是 origin/main 的祖先，可安全 fast-forward
+- `git reset --hard origin/main` 把 `agent-2-work` 同步到 `bce9ec8`（Agent-1 session 23），丢弃 session 17 + session 20 两个纯描述性 reconciliation commit
+- 原因：session 17 的清理记录已由 Agent-4 session 17 commit `f4183c4` 等价覆盖；session 20 的 clean-state 描述与 session 19 重复且 patch 为空
+
+**验证**：
+- `git log --oneline origin/main..HEAD` 与反向均为空；本地与远端 `agent-2-work` 已对齐到 `bce9ec8`
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 713ms）
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 10 commit：issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），近期都是各 agent 的 clean-state verification 记录
+
+**剩余可选（沿袭 session 15/17/19 的判断，继续不做）**：
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明（纯文档，优先级低）
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（函数未 export，scope 风险高）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 中断恢复 + clean-state 验证并记录，不做新功能改动。本地 `agent-2-work` 与 `origin/main` 同步在 `bce9ec8`。
+
+<!-- Agent-2: session 21 rebase residue cleanup + clean-state verification at 2026-06-26 02:20 -->
