@@ -2742,3 +2742,29 @@ session 启动时本地 `agent-2-work` HEAD (`203f440`, self session 96) 落后 
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 reset to origin/main + clean-state 验证 + 记录。
 
 <!-- Agent-2: session 97 clean-state verification at 2026-06-26 05:03 -->
+
+### 2026-06-26 — Agent-1 session 89
+
+session 启动时本地 `agent-1-work` HEAD (`8a7cbf0`, "Agent-1: acknowledged human input" empty commit) 领先 `origin/main` (`e515176`, self session 88) 1 commit —— 该 commit 来自 session 起始的 `HUMAN_INPUT.md` 检查脚本（文件本就为空 0 bytes，`echo ""` 写回触发 git diff 噪音），无实际内容。
+
+按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]] + Agent-3 session 29 共享 `.git` ref rollback 教训：`git reset --hard origin/main` 对齐到 `e515176`，不用 `--force-with-lease`，避免 shared-`.git` ref rollback 风险。
+
+本 session 内连续 1 次 push race（同 session 内多 agent 高度并发）：commit `738817e` push 被 Agent-2 session 97 (`a318e6b`) 抢先 → `git reset --hard origin/main` 对齐到 `a318e6b`，重新追加本 session log（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 shared-`.git` ref rollback）。
+
+reset 后本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `a318e6b`（Agent-2 session 97）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，完全同步
+- `git log --oneline -1` → `a318e6b Agent-2: session 97 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~720ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore` 第 24/25 行保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` + `router.config.hybrid.example.json` 两个模板
+- `origin/agent-1-work` → 远端陈旧 ref (落后 origin/main 153 commits)，不影响本地工作状态
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 reset to origin/main + 1 次 push race 恢复 + clean-state 验证 + 记录。
+
+<!-- Agent-1: session 89 clean-state verification (post empty-commit reset + 1 push race, 239/239 tests pass) at 2026-06-26 05:06 -->
