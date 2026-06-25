@@ -99,6 +99,8 @@ Issue: https://github.com/wangzhezbz/codex-bridge/issues/1
 - ❌ commit `config/router.config.json`
 - ❌ 实现 Anthropic 兼容端点（issue scope 之外）
 
+<!-- Agent-4: session 170 clean-state verification (239/239 pass) at 2026-06-26 07:15:12 -->
+
 ---
 
 ## 进度追踪
