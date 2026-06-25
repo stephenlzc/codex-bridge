@@ -41,14 +41,6 @@ const CHAT_SAFE_PARAMS = [
   "reasoning_split",
 ];
 
-const CUSTOM_CONSERVATIVE_CHAT_SAFE_PARAMS = CHAT_SAFE_PARAMS.filter(
-  (param) =>
-    !["parallel_tool_calls", "response_format"].includes(param),
-);
-
-const DEFAULT_CHAT_DROP_PARAMS = ["parallel_tool_calls", "response_format"];
-const CUSTOM_CONSERVATIVE_CHAT_DROP_PARAMS = DEFAULT_CHAT_DROP_PARAMS;
-
 export function normalizeAdapterProfile(route = {}) {
   const providerFamily = providerFamilyForRoute(route);
   const api = route.api === "responses" ? "responses" : "chat_completions";
@@ -63,7 +55,7 @@ export function normalizeAdapterProfile(route = {}) {
     inputModalities,
     customConservative,
   );
-  const dropParams = normalizedDropParams(route, api, customConservative);
+  const dropParams = normalizedDropParams(route);
 
   return {
     adapterId,
@@ -89,9 +81,7 @@ export function normalizeAdapterProfile(route = {}) {
     supportsPromptCaching: route.supportsPromptCaching || "unknown",
     safeParams: api === "responses"
       ? RESPONSES_SAFE_PARAMS
-      : customConservative
-        ? CUSTOM_CONSERVATIVE_CHAT_SAFE_PARAMS
-        : CHAT_SAFE_PARAMS,
+      : CHAT_SAFE_PARAMS,
     dropParams,
     maxToolContinuationTurns: positiveInteger(
       route.maxToolContinuationTurns ?? route.max_tool_continuation_turns,
@@ -175,12 +165,9 @@ function imageSupportForRoute(route, api, inputModalities, customConservative) {
   return "chat-image-url";
 }
 
-function normalizedDropParams(route, api, customConservative) {
+function normalizedDropParams(route) {
   const configured = Array.isArray(route.dropParams) ? route.dropParams : [];
-  const defaults = api === "chat_completions" && customConservative
-    ? CUSTOM_CONSERVATIVE_CHAT_DROP_PARAMS
-    : [];
-  return [...new Set([...configured, ...defaults])].sort();
+  return [...new Set(configured)].sort();
 }
 
 function positiveNumber(value, fallback) {

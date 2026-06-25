@@ -74,7 +74,7 @@ test("adapter profiles classify Kimi chat routes with image-url support", () => 
   assert.equal(profile.supportsFiles, "text-placeholder");
 });
 
-test("custom chat routes default to conservative text-only behavior", () => {
+test("custom chat routes default to text-only input while preserving OpenAI-compatible params", () => {
   const profile = normalizeAdapterProfile({
     id: "custom-model",
     custom: true,
@@ -93,12 +93,9 @@ test("custom chat routes default to conservative text-only behavior", () => {
   assert.equal(profile.supportsFiles, "none");
   assert.ok(profile.safeParams.includes("tools"));
   assert.ok(profile.safeParams.includes("tool_choice"));
-  assert.ok(!profile.safeParams.includes("parallel_tool_calls"));
-  assert.ok(!profile.safeParams.includes("response_format"));
-  assert.deepEqual(profile.dropParams, [
-    "parallel_tool_calls",
-    "response_format",
-  ]);
+  assert.ok(profile.safeParams.includes("parallel_tool_calls"));
+  assert.ok(profile.safeParams.includes("response_format"));
+  assert.deepEqual(profile.dropParams, []);
 });
 
 test("custom chat routes preserve explicit image input in the adapter profile", () => {
@@ -120,12 +117,9 @@ test("custom chat routes preserve explicit image input in the adapter profile", 
   assert.equal(profile.supportsFiles, "none");
   assert.ok(profile.safeParams.includes("tools"));
   assert.ok(profile.safeParams.includes("tool_choice"));
-  assert.ok(!profile.safeParams.includes("parallel_tool_calls"));
-  assert.ok(!profile.safeParams.includes("response_format"));
-  assert.deepEqual(profile.dropParams, [
-    "parallel_tool_calls",
-    "response_format",
-  ]);
+  assert.ok(profile.safeParams.includes("parallel_tool_calls"));
+  assert.ok(profile.safeParams.includes("response_format"));
+  assert.deepEqual(profile.dropParams, []);
 });
 
 test("every built-in preset has an adapter profile", () => {
@@ -191,10 +185,9 @@ test("custom model generated route remains conservative until image input is ena
   assert.equal(profile.supportsImages, "none");
   assert.ok(profile.safeParams.includes("tools"));
   assert.ok(profile.safeParams.includes("tool_choice"));
-  assert.ok(!profile.safeParams.includes("response_format"));
-  assert.ok(!profile.safeParams.includes("parallel_tool_calls"));
-  assert.ok(profile.dropParams.includes("response_format"));
-  assert.ok(profile.dropParams.includes("parallel_tool_calls"));
+  assert.ok(profile.safeParams.includes("response_format"));
+  assert.ok(profile.safeParams.includes("parallel_tool_calls"));
+  assert.deepEqual(profile.dropParams, []);
 });
 
 const BUILT_IN_PROVIDER_CONTRACTS = {
@@ -411,7 +404,7 @@ test("payload filtering keeps only adapter-safe chat parameters", () => {
   assert.equal(filtered.store, undefined);
 });
 
-test("custom conservative routes still pass through tools and tool_choice during filtering", () => {
+test("custom routes pass through OpenAI-compatible tool and format params by default", () => {
   const payload = {
     model: "custom-model",
     messages: [{ role: "user", content: "hello" }],
@@ -430,9 +423,29 @@ test("custom conservative routes still pass through tools and tool_choice during
 
   assert.deepEqual(filtered.tools, payload.tools);
   assert.deepEqual(filtered.tool_choice, payload.tool_choice);
-  assert.equal(filtered.parallel_tool_calls, undefined);
-  assert.equal(filtered.response_format, undefined);
+  assert.equal(filtered.parallel_tool_calls, true);
+  assert.deepEqual(filtered.response_format, { type: "json_object" });
   assert.deepEqual(filtered.messages, [{ role: "user", content: "hello" }]);
+});
+
+test("custom routes honor explicitly configured dropped params", () => {
+  const payload = {
+    model: "custom-model",
+    messages: [{ role: "user", content: "hello" }],
+    parallel_tool_calls: true,
+    response_format: { type: "json_object" },
+  };
+
+  const filtered = filterPayloadForAdapter(payload, {
+    provider: "custom",
+    custom: true,
+    api: "chat_completions",
+    model: "custom-model",
+    dropParams: ["parallel_tool_calls"],
+  });
+
+  assert.equal(filtered.parallel_tool_calls, undefined);
+  assert.deepEqual(filtered.response_format, { type: "json_object" });
 });
 
 test("adapterIdForRoute is stable for known provider families", () => {

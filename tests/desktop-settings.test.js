@@ -545,6 +545,41 @@ test("custom models can be saved and routed with their own API key env", () => {
   assert.equal(config.models[0].displayName, "My Coder");
   assert.equal(config.models[0].apiKeyEnv, "MY_PROVIDER_API_KEY");
   assert.deepEqual(config.models[0].inputModalities, ["text"]);
+  assert.equal(config.models[0].dropParams, undefined);
+});
+
+test("legacy custom default dropped params are ignored when routed", () => {
+  const rootDir = makeTempProject();
+  const configDir = path.join(rootDir, "config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const customModelsFile = path.join(configDir, "custom-models.json");
+  fs.writeFileSync(
+    customModelsFile,
+    JSON.stringify([
+      {
+        presetId: "custom-legacy-model",
+        providerId: "custom-legacy",
+        providerName: "Legacy Custom",
+        displayName: "Legacy Custom Model",
+        api: "chat_completions",
+        baseUrl: "https://api.example.com/v1",
+        model: "legacy-custom-model",
+        authMode: "api_key",
+        apiKeyEnv: "LEGACY_CUSTOM_API_KEY",
+        inputModalities: ["text"],
+        dropParams: ["response_format", "parallel_tool_calls"],
+        custom: true,
+      },
+    ], null, 2),
+    "utf8",
+  );
+  saveSelection(rootDir, ["custom-legacy-model"]);
+
+  const [custom] = readCustomModels(rootDir);
+  const config = buildRouterConfigFromSelection(rootDir, MODE_HYBRID);
+
+  assert.equal(custom.dropParams, undefined);
+  assert.equal(config.models[0].dropParams, undefined);
 });
 
 test("custom models preserve explicit image input when saved and routed", () => {

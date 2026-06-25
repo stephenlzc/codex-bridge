@@ -640,7 +640,7 @@ export function saveSelection(rootDir, selectedModelIds, mode = MODE_HYBRID) {
 
 export function readCustomModels(rootDir) {
   const saved = readJsonIfExists(customModelsPath(rootDir), []);
-  return Array.isArray(saved) ? saved : [];
+  return Array.isArray(saved) ? saved.map(normalizeSavedCustomModel) : [];
 }
 
 export function readModelImageInputOverrides(rootDir) {
@@ -2028,10 +2028,6 @@ function routeForSelectedModel(model, slot, priority, imageGenerationOverrides =
   if (model.custom && route.inputModalities === undefined) {
     route.inputModalities = normalizeInputModalities(model.inputModalities, ["text"]);
   }
-  if (model.custom && route.api === "chat_completions") {
-    const drops = Array.isArray(route.dropParams) ? route.dropParams : [];
-    route.dropParams = [...new Set([...drops, "parallel_tool_calls", "response_format"])];
-  }
   return route;
 }
 
@@ -2153,6 +2149,7 @@ function normalizeCustomModel(input = {}) {
   }
   const providerId = `custom-${slugify(providerName)}`;
   const keyEnv = String(input.keyEnv || `${slugifyEnv(providerName)}_API_KEY`).trim();
+  const dropParams = normalizeCustomDropParams(input.dropParams);
   return {
     presetId: input.presetId || `custom-${slugify(providerName)}-${slugify(model)}`,
     providerId,
@@ -2169,10 +2166,40 @@ function normalizeCustomModel(input = {}) {
     docsUrl: String(input.docsUrl || "").trim(),
     contextWindow: Number(input.contextWindow || 258400),
     inputModalities: normalizeInputModalities(input.inputModalities, ["text"]),
-    dropParams:
-      input.api === "responses" ? undefined : ["response_format", "parallel_tool_calls"],
+    ...(dropParams.length && input.api !== "responses" ? { dropParams } : {}),
     custom: true,
   };
+}
+
+function normalizeSavedCustomModel(model) {
+  if (!model || typeof model !== "object" || !model.custom) {
+    return model;
+  }
+  if (!isLegacyDefaultCustomDropParams(model.dropParams)) {
+    return model;
+  }
+  const cleaned = { ...model };
+  delete cleaned.dropParams;
+  return cleaned;
+}
+
+function normalizeCustomDropParams(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [...new Set(
+    value
+      .map((param) => String(param || "").trim())
+      .filter(Boolean),
+  )];
+}
+
+function isLegacyDefaultCustomDropParams(value) {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return false;
+  }
+  const normalized = new Set(value.map((param) => String(param || "").trim()));
+  return normalized.has("response_format") && normalized.has("parallel_tool_calls");
 }
 
 function writeCustomModels(rootDir, models) {

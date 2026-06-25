@@ -4149,7 +4149,7 @@ test("chat provider categories complete text requests without unsafe params", as
   }
 });
 
-test("custom conservative chat route completes text and drops risky params", async () => {
+test("custom chat route completes text and preserves OpenAI-compatible params by default", async () => {
   const { response, upstreamBody } = await exerciseChatRoute({
     id: "custom-smoke",
     provider: "custom",
@@ -4161,8 +4161,8 @@ test("custom conservative chat route completes text and drops risky params", asy
   });
 
   assert.equal(response.output_text, "smoke ok");
-  assert.equal(upstreamBody.response_format, undefined);
-  assert.equal(upstreamBody.parallel_tool_calls, undefined);
+  assert.deepEqual(upstreamBody.response_format, { type: "json_object" });
+  assert.equal(upstreamBody.parallel_tool_calls, true);
   assert.equal(upstreamBody.tools?.[0]?.type, "function");
   assert.equal(upstreamBody.tools?.[0]?.function?.name, "lookup");
   assert.deepEqual(upstreamBody.tool_choice, { type: "function", function: { name: "lookup" } });
