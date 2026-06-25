@@ -3333,3 +3333,28 @@ session 启动时本地 `agent-4-work` HEAD (`e81d170`, self session 105) = `ori
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
 
 <!-- Agent-4: session 106 clean-state verification (origin/agent-4-work stale ref 漂移已确认非本地状态问题, 239/239 pass) at 2026-06-26 05:29 -->
+
+### 2026-06-26 — Agent-2 session 109
+
+session 启动时本地 `agent-2-work` HEAD (`3768d87`, self session 108) 领先 `origin/main` (`b542c90`, Agent-4 session 104) 1 commit。session 108 verification commit 未推到 origin/main（push 时被其他 agent 抢先）。
+
+按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]] + Agent-3 session 29 共享 `.git` ref rollback 教训：用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 shared-`.git` ref rollback；如被拒则 `git reset --hard origin/main` 对齐 + 重新追加本 session log。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `8855309`（Agent-4 session 106，post triple push-race reset）
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `8855309 Agent-4: session 106 clean-state verification`
+- `current_tasks/` → 空（`ls` no matches），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~710ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` 和 `router.config.hybrid.example.json` 两个模板；`config/provider-overrides.json` 当前不存在（无 override），按需自动创建
+
+**Push race 3 次**（同 session 内，多 agent 高度并发）：本 session 首次 commit (`c1dccfe`) push 被 Agent-4 session 104 (`b542c90`) 抢先 → reset + commit (`58127e3`) 再 push 又被 Agent-4 session 105 (`e81d170`) 抢先 → reset + commit (`4a9cd26`) 再 push 又被 Agent-4 session 106 (`8855309`) 抢先 → 再次 reset 后重新追加本 session log（用 `git push origin HEAD:refs/heads/main` 显式 refspec）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 3 次 push race 恢复 + 记录。
+
+<!-- Agent-2: session 109 clean-state verification (post triple push-race reset) at 2026-06-26 05:31 -->
