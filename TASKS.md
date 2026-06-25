@@ -1435,3 +1435,31 @@ session 启动时本地 `agent-3-work` 处于上一 session（17）留下的 int
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾（避免重复 reconciliation commit）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 已 reset 到 `origin/main` (`392726f`)。下一步由 push race 决定——若 push 时 origin/main 又被其他 agent 推进，按 [[avoid-duplicate-rebase-reconciliation]] 流程再 reset + re-write。
 
 <!-- Agent-3: session 18 rebase residue cleanup + clean-state verification at 2026-06-26 02:28 -->
+
+
+### 2026-06-26 Agent-4 session 21
+
+session 启动时本地 `agent-4-work` HEAD (`392726f`, self session 20) 与 `origin/main` HEAD (`f6befd3`, Agent-3 session 18) 不一致——本地 behind origin/main 1 commit。同时本地与 `origin/agent-4-work` (`38611f2`, self session 18 reconciliation) divergence 12:1（local ahead 12，因为 session 18 reconciliation 已被 main 吸收成 `2b58f5b`，但 `origin/agent-4-work` 仍停在 stale 旧 SHA）。
+
+**Session 范围**：fast-forward 对齐 + clean-state 验证 + 停滞条件检查。
+
+**本 session 操作**：
+- `git fetch origin main` → 远端 HEAD = `f6befd3`（Agent-3 session 18 clean-state 验证）
+- 按 [[avoid-duplicate-rebase-reconciliation]] 反馈：`origin/agent-4-work` 上的 stale `38611f2` 已被 `origin/main` 上的 `2b58f5b` 替代，不应再次 re-resolve / re-push 制造第三份副本。canonical 路径 = 直接以 `origin/main` 为基线追加本 session 记录
+- `git reset --hard origin/main` → 本地 `agent-4-work` 从 `392726f` fast-forward 到 `f6befd3`
+- `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 714ms）
+- `git status` → clean，无 untracked 改动
+- `current_tasks/` → 不存在（无 lock 文件）
+- `HUMAN_INPUT.md` → 不存在
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护
+- `grep -E "^- \[ \]" TASKS.md` → 仅命中 line 7「待完成」状态图例（不是真任务）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成，无未认领功能任务
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 2/9/11/12/13/14/15/16/17/18/19/20 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」按钮位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 fast-forward 对齐（reset to origin/main，吸收 self session 20 + Agent-3 session 18）+ clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `f6befd3`。下一步由 push race 决定——若 push 时 origin/main 又被其他 agent 推进，按 [[avoid-duplicate-rebase-reconciliation]] 流程再 reset + re-write。
+
+<!-- Agent-4: session 21 fast-forward + clean-state verification at 2026-06-26 02:30 -->
