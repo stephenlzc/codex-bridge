@@ -158,43 +158,23 @@ session 启动时本地 `agent-4-work` HEAD (`2f954bd`) = `origin/main` HEAD (`2
 
 <!-- Agent-4: session 42 clean-state verification at 2026-06-26 02:53 -->
 
-### 2026-06-26 — Agent-1 session 47
+### 2026-06-26 — Agent-4 session 43
 
-session 启动时本地 `agent-1-work` HEAD (`7f0fe91`, session 46 验证) 落后于 origin/main `73b6a9f`（Agent-2 session 28 清理 T1 lock + Agent-3 重新认领 T2 lock）。session 启动时残留上一 session 的 interactive rebase 中断状态（`TASKS.md` 冲突标记未解决，self session 46 vs origin/main Agent-2 session 4）。
+session 启动时本地 `agent-4-work` HEAD (`33dde78`) = `origin/main` HEAD (`33dde78`)，与 `origin/main` 完全同步（`git rev-list --left-right --count` = 0/0）。
 
-按 [[feedback_avoid_duplicate_rebase]]：上一 session 的 verification commit 已在 `origin/main`（通过 Agent-2 等其他 agent 的 push race）下被吸收，无需重新 rebase / 再次 reset；只需 `git rebase --abort` 中断残留 rebase 后 `git reset --hard origin/main` 对齐到 `73b6a9f`。
-
-本 session 检查：
-
-- `git status` → clean，无 untracked 改动
-- `git log --oneline HEAD..origin/main` → 6 commits ahead（Agent-2 session 28 + Agent-3 后续 T2 锁 + 其他 agent 验证记录）
-- `git log --oneline origin/main..HEAD` → 0 commits（已完全对齐）
-- `current_tasks/` → 仅 Agent-3 的 `T2_baseurl_override.lock`（T2 工作早在 commit `5f7fda3` 完成，lock 为历史认领残留，本 session 不擅自清理）
-- `HUMAN_INPUT.md` → 存在但为空（无待处理指令）
-- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~718ms）
-- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
-- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
-
-**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active work）。本 session 无新功能改动，添加 session 47 clean-state 验证记录。
-
-<!-- Agent-1: session 47 clean-state verification at 2026-06-26 03:04 -->
-
-### 2026-06-26 — Agent-1 session 48
-
-session 启动时本地 `agent-1-work` HEAD (`5cbc1af`, session 47 验证) 与 `origin/agent-1-work` HEAD (`edf52c1`) 分叉：local 落后 3 commit（其他 agent 推进 `origin/main` 后，Agent-1 在 `origin/agent-1-work` 上的同步 commit `edf52c1` 已被上游吸收），本机 HEAD 仍停留在未推的 `5cbc1af`（其内容与 `edf52c1` 几乎一致，但不同 SHA）。
-
-按 [[feedback_avoid_duplicate_rebase]]：上一 session 的 verification commit 已在 `origin/agent-1-work` 上（通过 push race 落地为 `edf52c1`），无需重新生成；只需 `git reset --hard origin/agent-1-work` 对齐到 `edf52c1`。
+`origin/agent-4-work` 是远端陈旧 ref（`2f954bd`，87 commits 落后于 `origin/main`），属于远端 tracking ref 漂移，不影响本地工作状态。已尝试按 [[feedback_push_to_correct_branch]] `git push origin agent-4-work:main`，remote 报 "Everything up-to-date"（确认 `33dde78` 已在 `origin/main` 上）。
 
 本 session 检查：
 
-- `git status` → clean，无 untracked 改动
-- `git rev-list --left-right --count origin/agent-1-work...agent-1-work` → 0/0（reset 后已完全对齐）
-- `current_tasks/` → `T2_baseurl_override.lock`（已 commit 到分支 HEAD，T2 实际工作早已在 commit `5f7fda3` 完成，lock 为历史认领残留；本 session 不擅自修改分支状态进行清理）
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `33dde78`
+- `current_tasks/` → 空，仅 `.gitkeep`，无 lock 文件
 - `HUMAN_INPUT.md` → 不存在，无待处理指令
-- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~709ms）
-- `git check-ignore -v config/router.config.json` → 该文件被 .gitignore line 24 保护，未 commit；`config/provider-overrides.json` 在本机不存在（也无 override 内容）
+- `npm run check` → **238/238 通过**，0 失败/0 跳过/0 取消（duration ~697ms，单次稳定运行）
 - 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json` → `.gitignore:24` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
 
-**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active work）。本 session 无新功能改动，添加 session 48 clean-state 验证记录。
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证并记录。
 
-<!-- Agent-1: session 48 clean-state verification at 2026-06-26 03:07 -->
+<!-- Agent-4: session 43 clean-state verification at 2026-06-26 03:06 -->
