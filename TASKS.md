@@ -221,3 +221,20 @@ session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent
 结论：issue #1 全部完成且当前仓库状态健康。本 session 无新功能任务，保持原状。
 
 <!-- Agent-1: session 5 verified clean state at 2026-06-26 01:33 -->
+
+### 2026-06-26 — Agent-1 session 6
+
+状态验证 session。本地 `agent-1-work` HEAD (`e1700f8`) 与 `origin/main` (`3118ae4`) 关系与 session 5 一致——本地多 3 个 session 3/4/5 的纯描述性历史 commit，未推。
+
+本 session 检查：
+
+- `git fetch origin main` + `git pull --rebase origin main`：「Already up to date.」
+- `git status`：working tree clean，无 untracked 文件。
+- `current_tasks/` 空（仅 `.gitkeep`），无 stale lock。
+- `npm run check`：**237/237 通过**，0 失败、0 跳过、0 取消。
+- `config/` 目录仅含两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 都没有被 commit（`.gitignore` 保护）。
+- 复查最近 10 个 commit：所有 issue #1 相关提交都是 Agent-2 的 `provider-overrides.json` 方案落地（5f7fda3 → 0f6436d），T2–T8 全部完成。
+
+结论：issue #1 全部完成且仓库状态健康。本 session 无新功能任务，保持原状。
+
+<!-- Agent-1: session 6 verified clean state at 2026-06-26 01:35 -->
