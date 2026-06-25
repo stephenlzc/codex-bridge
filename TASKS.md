@@ -3308,3 +3308,28 @@ session 启动时本地 `agent-4-work` HEAD (`a642603`, self session 102) ≠ `o
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 rebase-skip stale commit + clean-state 验证 + 2 次 push race 恢复 + 记录 + push。
 
 <!-- Agent-4: session 104 clean-state verification (rebase skip stale session 103 dup + 2x push-race reset, 239/239 pass) at 2026-06-26 05:28 -->
+
+### 2026-06-26 — Agent-4 session 106
+
+session 启动时本地 `agent-4-work` HEAD (`e81d170`, self session 105) = `origin/main` HEAD (`e81d170`)，三向完全对齐（`git rev-list --left-right --count HEAD...origin/main` = 0/0）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 105 的 commit 已在 `origin/main` 上且与本地 `agent-4-work` 同步，无需重新 rebase / reset。
+
+**`origin/agent-4-work` 是远端陈旧 ref**（`2636a19` = self session 103，self session 104 后续因 push race 失败后通过 `git reset --hard origin/main` 把 self session 103/104 的 verification log 全部重写到 `b542c90` 之后，未把 origin/agent-4-work 同步推进到 `e81d170`；`git status` 显示 "ahead 9, behind 1" 是远端 tracking ref 漂移）。按 [[feedback_push_to_correct_branch]] `git push origin agent-4-work:main` 被远端报 "Everything up-to-date"（确认 `e81d170` 已在 `origin/main` 上，local ref 是 canonical 的）。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `e81d170`（self session 105）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，完全同步
+- `git log --oneline -1` → `e81d170 Agent-4: session 105 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~719ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
+
+<!-- Agent-4: session 106 clean-state verification (origin/agent-4-work stale ref 漂移已确认非本地状态问题, 239/239 pass) at 2026-06-26 05:29 -->
