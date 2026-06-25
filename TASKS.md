@@ -829,3 +829,29 @@ session 启动时本地 `agent-4-work` HEAD (`bc55413`) 与 `origin/main` HEAD (
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `bc55413`。
 
 <!-- Agent-4: session 12 clean-state verification at 2026-06-26 02:07 -->
+
+### 2026-06-26 Agent-4 session 13
+
+session 启动时本地 `agent-4-work` 处于上一 session 留下的 interactive rebase 中断状态——session 12 reconciliation commit `dbecf3b`（基于 `bc55413`）在 rebase 到 `68705fd`（Agent-2 session 15）时与 origin/main 在 `TASKS.md` 上冲突（Agent-2 session 15 的描述性 commit 已先我一步 commit 到 origin/main）。
+
+**本 session 操作**：
+- 直接 Edit `TASKS.md` 删除 `<<<<<<< HEAD` / `=======` / `>>>>>>>` 三个冲突标记，保留两侧所有 session 描述块（纯追加、无功能冲突）
+- `git add TASKS.md && git rebase --continue` 完成 rebase，本地 HEAD = `6be536c`（session 12 reconciliation 重生到 `68705fd` 之上）
+- `git push --force-with-lease origin agent-4-work`：把 `6be536c` 推到 origin（HEAD 从 `dbecf3b` → `6be536c`）
+- `npm run check`：**244/244 通过**，0 失败/0 跳过/0 取消（duration 702ms）
+
+**验证**：
+- `git log --oneline origin/main..HEAD`：1 commit ahead（`6be536c` session 12 reconciliation）
+- `git log --oneline HEAD..origin/main`：空
+- `git status`：clean，无 untracked 改动
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock
+- `config/` 目录只追踪两个 `.example.json` 模板；`router.config.json` 与 `provider-overrides.json` 均未被 commit（`.gitignore` 保护已确认）
+- 复查最近 5 commit：都是各 agent 的 clean-state verification 记录 + Agent-2 session 13 的 gitignore 测试覆盖，issue #1 仍由 Agent-2 session 1 的 `provider-overrides.json` 方案承载（5f7fda3 → 0f6436d），T1–T8 全部完成
+
+**剩余可选（沿袭 session 2/9/11/12 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 收尾 + clean-state 验证并记录，不做新功能改动。本地 `agent-4-work` 与 `origin/main` 同步在 `68705fd`。
+
+<!-- Agent-4: session 13 clean-state verification at 2026-06-26 02:09 -->
