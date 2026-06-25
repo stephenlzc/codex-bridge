@@ -20,8 +20,10 @@ import {
 } from "./chat-to-responses.js";
 import {
   buildCompactChatRequest,
+  buildCompactResponsesRequest,
   compactKindForResponsesRequest,
   compactResponseFromChat,
+  compactResponseFromResponses,
   compactResponseToSse,
 } from "./compact.js";
 import {
@@ -136,6 +138,12 @@ export async function handleResponsesRequest(
   const compactKind = compactKindForResponsesRequest(requestBody, context);
   if (compactKind && route.api === "chat_completions") {
     return proxyChatCompact(requestBody, route, history, res, {
+      ...context,
+      compactKind,
+    });
+  }
+  if (compactKind && route.api === "responses") {
+    return proxyResponsesCompact(requestBody, route, history, res, {
       ...context,
       compactKind,
     });
@@ -559,6 +567,52 @@ async function proxyChatCompact(requestBody, route, history, res, context = {}) 
   ]);
   history.recordResponse(response, {
     api: "chat_completions",
+    routeId: route.id || "",
+    upstreamModel: route.model || "",
+    upstreamKnown: false,
+    localFallback: "compact",
+  });
+
+  if (context.compactKind === "v2") {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    res.end(compactResponseToSse(response));
+    return;
+  }
+
+  jsonResponse(res, 200, response);
+}
+
+async function proxyResponsesCompact(requestBody, route, history, res, context = {}) {
+  const compactBody = buildCompactResponsesRequest(requestBody);
+  compactBody.model = route.model;
+  const { messages: sourceMessages, toolContext } = responseRequestToChatSourceMessages(
+    compactBody,
+    route,
+    history,
+  );
+  if (shouldInlineLocalHistoryForResponses(compactBody, history)) {
+    inlineLocalHistoryForResponsesPayload(compactBody, sourceMessages);
+  }
+
+  const upstreamUrl = joinUpstreamUrl(responsesBaseUrlForRoute(route), "/responses");
+  logRoute(context, route, upstreamUrl);
+  const upstream = await callJsonUpstream(upstreamUrl, route, compactBody, context);
+  logUsage(context, route, extractUsageObject(upstream));
+
+  const response = compactResponseFromResponses(upstream, requestBody.model || route.id);
+  history.record(response.id, [
+    ...sourceMessages,
+    {
+      role: "assistant",
+      content: response.output[0]?.encrypted_content || null,
+    },
+  ]);
+  history.recordResponse(response, {
+    api: "responses",
     routeId: route.id || "",
     upstreamModel: route.model || "",
     upstreamKnown: false,

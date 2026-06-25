@@ -4728,8 +4728,9 @@ test("chat-routed remote compact v2 returns a single compaction SSE item", async
     });
     const text = await response.text();
     assert.equal(response.ok, true, text);
+    assert.match(text, /event: response\.output_item\.added/);
     assert.match(text, /event: response\.output_item\.done/);
-    assert.equal((text.match(/"type":"compaction"/g) || []).length, 2);
+    assert.equal((text.match(/"type":"compaction"/g) || []).length, 3);
     assert.doesNotMatch(text, /"type":"message"/);
     assert.match(text, /Another language model started to solve this problem/);
     assert.match(text, /Summary: keep the latest user request/);
@@ -4739,6 +4740,107 @@ test("chat-routed remote compact v2 returns a single compaction SSE item", async
     assert.equal(upstreamBody.tool_choice, undefined);
     assert.doesNotMatch(JSON.stringify(upstreamBody), /compaction_trigger/);
     assert.match(JSON.stringify(upstreamBody.messages), /CONTEXT CHECKPOINT COMPACTION/);
+  } finally {
+    await close(router);
+    await close(upstream);
+  }
+});
+
+test("responses-routed remote compact v2 wraps ordinary upstream output as one compaction SSE item", async () => {
+  let upstreamBody;
+  const upstream = http.createServer(async (req, res) => {
+    assert.equal(req.url, "/v1/responses");
+    upstreamBody = await readJson(req);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        id: "resp_native_compact_summary",
+        object: "response",
+        status: "completed",
+        model: "gpt-5.5",
+        output: [
+          {
+            id: "rs_native_compact",
+            type: "reasoning",
+            summary: [],
+          },
+          {
+            id: "msg_native_compact",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "Summary: keep route state and latest user task.",
+                annotations: [],
+              },
+            ],
+          },
+        ],
+        output_text: "Summary: keep route state and latest user task.",
+        usage: {
+          input_tokens: 20,
+          output_tokens: 8,
+          total_tokens: 28,
+        },
+      }),
+    );
+  });
+
+  await listen(upstream);
+  const router = createRouterServer({
+    host: "127.0.0.1",
+    port: 0,
+    authToken: "router-token",
+    defaultModel: "gpt-5.5",
+    models: [
+      {
+        id: "gpt-5.5",
+        displayName: "GPT-5.5",
+        api: "responses",
+        baseUrl: `${serverUrl(upstream)}/v1`,
+        model: "gpt-5.5",
+        apiKey: "upstream-key",
+      },
+    ],
+  });
+
+  await listen(router);
+
+  try {
+    const response = await fetch(`${serverUrl(router)}/v1/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer router-token",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        stream: true,
+        input: [
+          {
+            type: "message",
+            role: "user",
+            content: "long GPT task history",
+          },
+          { type: "compaction_trigger" },
+        ],
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.ok, true, text);
+    assert.match(text, /event: response\.output_item\.added/);
+    assert.match(text, /event: response\.output_item\.done/);
+    assert.equal((text.match(/"type":"compaction"/g) || []).length, 3);
+    assert.doesNotMatch(text, /"type":"message"/);
+    assert.doesNotMatch(text, /"type":"reasoning"/);
+    assert.match(text, /Summary: keep route state and latest user task/);
+
+    assert.equal(upstreamBody.stream, false);
+    assert.equal(upstreamBody.tools, undefined);
+    assert.doesNotMatch(JSON.stringify(upstreamBody), /compaction_trigger/);
+    assert.match(JSON.stringify(upstreamBody.input), /CONTEXT CHECKPOINT COMPACTION/);
   } finally {
     await close(router);
     await close(upstream);

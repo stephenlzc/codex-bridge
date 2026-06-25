@@ -9,7 +9,7 @@ import {
   readJsonRequest,
 } from "./json.js";
 import { buildModelCatalog, openAiModelsList } from "./model-catalog.js";
-import { isResponsesCompactPath } from "./compact.js";
+import { isResponsesCompactPath, requestHasCompactionTrigger } from "./compact.js";
 import {
   handleResponsesRequest,
   sendUpstreamError,
@@ -121,11 +121,12 @@ export function createRouterServer(config = loadConfig()) {
         }
         const requestId = makeRequestId();
         const clientAbort = clientAbortContext(req, res);
+        const compactKind = compactKindForRequest(url.pathname, body);
         console.log(
           `[${new Date().toISOString()}] ${requestId} <- /v1/responses ` +
             `model=${body.model || "(default)"} route=${route.id} ` +
             `api=${route.api} upstream_model=${route.model} stream=${Boolean(body.stream)} ` +
-            `compact=${compactKindForPath(url.pathname) || "-"} ` +
+            `compact=${compactKind || "-"} ` +
             `previous_response_id=${body.previous_response_id || "-"} ` +
             `client_auth=${clientAuth.kind} upstream_auth=${authModeForRoute(route)}`,
         );
@@ -135,7 +136,7 @@ export function createRouterServer(config = loadConfig()) {
             clientAuth,
             clientHeaders: req.headers,
             clientSignal: clientAbort.signal,
-            compactKind: compactKindForPath(url.pathname),
+            compactKind,
           });
         } catch (error) {
           if (error?.code === "client_closed_request") {
@@ -258,6 +259,10 @@ function isResponsesPostPath(pathname) {
 
 function compactKindForPath(pathname) {
   return isResponsesCompactPath(pathname) ? "v1" : "";
+}
+
+function compactKindForRequest(pathname, body) {
+  return compactKindForPath(pathname) || (requestHasCompactionTrigger(body) ? "v2" : "");
 }
 
 function isModelSettingsPath(pathname) {

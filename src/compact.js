@@ -52,10 +52,25 @@ export function buildCompactChatRequest(requestBody, route, history) {
   return converted;
 }
 
+export function buildCompactResponsesRequest(requestBody) {
+  return compactRequestBody(requestBody);
+}
+
 export function compactResponseFromChat(chat, requestedModel) {
-  const id = responseIdFromCompactChat(chat?.id);
+  const id = responseIdFromCompactUpstream(chat?.id);
   const summary = extractChatSummaryText(chat) ||
     "Summary unavailable: the upstream model returned no summary text during context compaction.";
+  return compactResponseFromSummary(id, summary, requestedModel, responseUsage(chat?.usage));
+}
+
+export function compactResponseFromResponses(response, requestedModel) {
+  const id = responseIdFromCompactUpstream(response?.id);
+  const summary = extractResponsesSummaryText(response) ||
+    "Summary unavailable: the upstream model returned no summary text during context compaction.";
+  return compactResponseFromSummary(id, summary, requestedModel, responseUsage(response?.usage));
+}
+
+function compactResponseFromSummary(id, summary, requestedModel, usage) {
   const item = {
     id: `cmp_${stableFragment(id)}`,
     type: "compaction",
@@ -73,7 +88,7 @@ export function compactResponseFromChat(chat, requestedModel) {
     parallel_tool_calls: true,
     error: null,
     incomplete_details: null,
-    usage: responseUsage(chat?.usage),
+    usage,
   };
 }
 
@@ -89,15 +104,21 @@ export function compactResponseToSse(response) {
       sequence_number: 0,
       response: inProgress,
     }),
+    sse("response.output_item.added", {
+      type: "response.output_item.added",
+      sequence_number: 1,
+      output_index: 0,
+      item: response.output[0],
+    }),
     sse("response.output_item.done", {
       type: "response.output_item.done",
-      sequence_number: 1,
+      sequence_number: 2,
       output_index: 0,
       item: response.output[0],
     }),
     sse("response.completed", {
       type: "response.completed",
-      sequence_number: 2,
+      sequence_number: 3,
       response,
     }),
     "data: [DONE]\n\n",
@@ -207,6 +228,23 @@ function extractChatSummaryText(chat) {
   return contentToText(message.content || message.reasoning_content || "").trim();
 }
 
+function extractResponsesSummaryText(response) {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text.trim();
+  }
+  const parts = [];
+  for (const item of response?.output || []) {
+    if (item?.type !== "message" && item?.role !== "assistant") {
+      continue;
+    }
+    const text = contentToText(item.content ?? item.text ?? item.output_text ?? "");
+    if (text) {
+      parts.push(text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
 function responseUsage(usage = {}) {
   usage ||= {};
   const inputTokens = usage.prompt_tokens || usage.input_tokens || 0;
@@ -231,9 +269,9 @@ function responseItems(input) {
   return Array.isArray(input) ? input : [input];
 }
 
-function responseIdFromCompactChat(chatId) {
-  if (chatId) {
-    return chatId.startsWith("resp_") ? chatId : `resp_${chatId}`;
+function responseIdFromCompactUpstream(upstreamId) {
+  if (upstreamId) {
+    return upstreamId.startsWith("resp_") ? upstreamId : `resp_${upstreamId}`;
   }
   return `resp_compact_${randomUUID()}`;
 }
