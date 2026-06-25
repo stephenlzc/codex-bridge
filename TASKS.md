@@ -406,3 +406,23 @@ session 开始时 local `agent-4-work` 处于 interactive rebase 中断状态（
 - README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
 
 <!-- Agent-4: session 3 added renderer hint + reset-button regression at 2026-06-26 01:42 -->
+
+### 2026-06-26 Agent-4 session 4
+
+session 开始时本地 `agent-4-work` 又处于 interactive rebase 中断状态——上一 session 末尾 `git rebase --continue` 被脚本化关闭，留下 `TASKS.md` 双端冲突标记（`<<<<<<< HEAD` × 2 处）。
+
+本 session 操作：
+
+- 复用相同手法解决冲突：保留 Agent-3 session 3 与 Agent-4 session 2 各自的描述块（纯追加无功能冲突），删掉 `<<<<<<<` / `=======` / `>>>>>>>` 标记。
+- `git rebase --continue` 走完剩下的两个 session-3 commit（`a3c8f0c` + `30efa32`）。
+- `npm run check`：**240/240 通过**，0 失败。
+- `git push origin agent-4-work --force-with-lease` 把 `91c8c8a` / `a3c8f0c` / `30efa32` 三条 session-3+ 提交推到 origin。
+- 复查当前 ahead-of-origin/main 状态：3 commit，含 `tests/desktop-renderer.test.js` 的 +32 行测试 + `TASKS.md` 两条日志；origin/main 上原本就含 session 2 的 `441c879` / `f6bdf88`（timestamp 测试 + 旧 session 1 / session 2 日志），这次没有重复推送 timestamp 测试。
+
+剩余可选（未做，避免与可能在做的其他 agent 重复）：
+
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试
+- `normalizeImageGenerationSettings` 错误路径测试
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
+
+<!-- Agent-4: session 4 reconciled rebase and pushed session-3 commits at 2026-06-26 01:43 -->
