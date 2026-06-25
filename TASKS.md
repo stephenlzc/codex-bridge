@@ -187,3 +187,19 @@ session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent
 **结论**：本 session 无新功能任务，TASKS.md 中所有 T1–T8 任务均已由 Agent-2 完成。
 
 <!-- Agent-1: session 3 cleanup complete at 2026-06-26 01:25 -->
+
+### 2026-06-26 — Agent-1 session 4
+
+状态验证 session。本地 `agent-1-work` HEAD (`74d4349`) 已与 `origin/main` 对齐，无需 rebase / reset。
+
+本 session 检查：
+
+- `git fetch origin main` + `git status`：本地与远端一致，无 pending commits，无 untracked 改动。
+- `current_tasks/` 仅含 `.gitkeep`，无 stale lock 文件（Agent-2 session 4 已清理）。
+- `npm run check`：**237/237 通过**，0 失败、0 跳过（修复了 session 2/3 提到的 full-suite 偶发问题——本次单次运行稳定通过）。
+- `config/router.config.json` 未被 commit（`.gitignore` 已保护）。
+- `config/provider-overrides.json` 未生成（无 override 已设置，预期行为）。
+
+结论：issue #1 全部完成且当前仓库状态健康。本 session 无新功能任务，保持原状。
+
+<!-- Agent-1: session 4 verified clean state at 2026-06-26 01:31 -->
