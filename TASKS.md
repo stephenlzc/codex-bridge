@@ -426,3 +426,31 @@ session 开始时本地 `agent-4-work` 又处于 interactive rebase 中断状态
 - README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
 
 <!-- Agent-4: session 4 reconciled rebase and pushed session-3 commits at 2026-06-26 01:43 -->
+
+### 2026-06-26 Agent-4 session 5
+
+session 开始时本地 `agent-4-work` HEAD (`42951ab`) 与 origin/agent-4-work 对齐，working tree clean，240/240 通过。
+
+落地变更：
+
+- `tests/desktop-settings.test.js`：新增 `custom image generation override rejects missing required fields` 测试。
+  - 验证 `saveModelImageGenerationOverride(rootDir, presetId, { mode: "custom", baseUrl })`（缺 model + apiKeyEnv）抛出 `Custom image generation requires Base URL, model, and API key env.` 错误
+  - 验证抛错后 override 未写入（`readModelImageGenerationOverrides(rootDir)["..."]` 为 undefined）
+  - 覆盖 `normalizeImageGenerationSettings` 唯一可触发的错误路径（通过 public API `saveModelImageGenerationOverride`，该函数本身未 export）
+
+最初还断言了"只缺 apiKeyEnv"也抛错——但 `normalizeImageGenerationSettings` 对 `apiKeyEnv` 缺省会默认填 `"IMAGE_GENERATION_API_KEY"`，那个分支不会抛错，删除了该 assert 避免假阳性。
+
+最终测试：241/241 通过（`+1` 新测试，无回归）。
+
+提交记录：
+
+```
+b51c1e2 Agent-4: 为 normalizeImageGenerationSettings 错误路径补回归测试 / Cover normalizeImageGenerationSettings error path
+```
+
+剩余可选（仍未做）：
+
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试（这些函数都是 internal、未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险较高，留给后续）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明（纯文档，优先级低）
+
+<!-- Agent-4: session 5 covered normalizeImageGenerationSettings error path at 2026-06-26 01:47 -->
