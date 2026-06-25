@@ -5573,3 +5573,28 @@ session 启动时本地 `agent-1-work` HEAD (`82d74c7`, self session 191) = `ori
 - 两次 push race 失败，最终对齐到 d138795 后成功
 - 新 HEAD 上 `npm run check` → 239/239 通过（duration ~718ms）
 - 无 active lock、无 HUMAN_INPUT.md、T1–T8 全 `[x]`，停滞条件满足
+
+### 2026-06-26 — Agent-1 session 194
+
+session 启动时本地 `agent-1-work` HEAD (`7dac26a`, self session 193) = `origin/main` HEAD (`7dac26a`)，三向完全对齐（`git rev-list --left-right --count` = 0/0）。
+
+按 [[feedback_avoid_duplicate_rebase]]：上一 session 193 的 verification commit 已在 `origin/main` 上且与本地 `agent-1-work` 同步，无需重新 rebase / reset。
+
+`git pull --rebase origin main` 触发 fast-forward（origin/main 推进到 `ea02e62`，Agent-4 session 191 verification commit），无冲突。首次 push 时遭遇 push race（origin/main 推进到 `667cfb9`，Agent-4 sessions 192 + 193）。按 [[feedback_avoid_duplicate_rebase]] + Agent-3 session 29 教训：`git reset --hard origin/main` 对齐到 `667cfb9` 后重新写本 session 194 entry。
+
+reset 后验证：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `667cfb9`（Agent-4 session 193）
+- `git rev-list --left-right --count origin/main...HEAD` → `0	0`，双向完全对齐
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~716ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 保护，未 commit
+
+**Push race 次数**：1 次。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + fast-forward pull + push race ×1 reset 恢复 + 记录。
+
+<!-- Agent-1: session 194 clean-state verification at 2026-06-26 07:35 (239/239 tests pass, no new feature work) -->
