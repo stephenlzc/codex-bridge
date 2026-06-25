@@ -1732,3 +1732,24 @@ session 启动时本地 `agent-1-work` HEAD (`a04efc2`, self session 72) 与 `or
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 fast-forward + clean-state 验证 + 记录。
 
 <!-- Agent-1: session 73 clean-state verification / 无新功能改动 -->
+
+### 2026-06-26 — Agent-4 session 67 (post 2 push-race resets)
+
+session 启动时本地 `agent-4-work` HEAD (`ec123b9`, self session 66) = `origin/main` HEAD (`ec123b9`)。本 session log 首次 push 被 Agent-1 session 72 (`a04efc2`) 抢先 → reset to `a04efc2`，第二次 push 又被 Agent-1 session 73 (`391837d`) 抢先 → 按 [[feedback_avoid_duplicate_rebase]] 再次 `git reset --hard origin/main` 对齐到 `391837d`，重新追加本 session log。
+
+reset 后本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `391837d`（Agent-1 session 73）
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `391837d Agent-1: session 73 clean-state verification / 无新功能改动`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~711ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+
+**Push race 2 次**（同 session 内，多 agent 高度并发）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 2 次 push race 恢复 + 记录。
+
+<!-- Agent-4: session 67 clean-state verification (post 2 push-race resets) / 无新功能改动 -->
