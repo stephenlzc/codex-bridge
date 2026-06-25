@@ -1120,3 +1120,29 @@ session 启动时本地 `agent-3-work` 处于上一 session 留下的 interactiv
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 rebase 中断恢复（双重 reset）+ clean-state 验证并记录，不做新功能改动。本地 `agent-3-work` 与 `origin/main` 同步在 `6bec4c1`。
 
 <!-- Agent-3: session 14 rebase recovery + clean-state verification at 2026-06-26 02:20 -->
+### 2026-06-26 Agent-1 session 24
+
+session 启动时本地 `agent-1-work` HEAD (`bce9ec8`) 与 `origin/main` HEAD (`bce9ec8`) 同步，但与 `origin/agent-1-work` (`7aae9aa`) 分叉：本地有 9 个 commit，远程有 4 个 commit，且远端 `7aae9aa` 已包含 session 22 reconciliation。
+
+**Session 范围**：clean-state 验证 + 遵循 memory 规则（避免重复 rebase reconciliation）。
+
+**本 session 操作**：
+1. `git fetch origin` → 远端无新提交
+2. `git log --oneline origin/agent-1-work..HEAD` → 9 个 commit（session 21 / 22 / 23 reconciliation 链）
+3. `git log --oneline HEAD..origin/agent-1-work` → 4 个 commit（session 18 / 19 / 20 / 22 reconciliation）
+4. 按 memory `feedback_avoid_duplicate_rebase.md` 规则：`origin/agent-1-work` 已有 session 22 reconciliation commit（`7aae9aa`），不重新 rebase 解决；直接 `git reset --hard origin/main` 重置到 `bce9ec8`。
+5. `npm run check` → **244/244 通过**，0 失败/0 跳过/0 取消（duration 723ms）。
+6. `git status` → clean，无 untracked 改动。
+7. `current_tasks/` → 仅含 `.gitkeep`，无 lock 文件。
+8. `HUMAN_INPUT.md` → 不存在。
+9. `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 .gitignore 第 24 / 25 行保护。
+10. `TASKS.md` → T1–T8 全部 `[x]`，33 个 checkbox 已全部完成。
+11. 复查最近 5 commit：session 23 retry push (`bce9ec8`) + 各 agent clean-state verification 记录 + Agent-2 session 1 的 `provider-overrides.json` 方案承载 issue #1（`5f7fda3` → `0f6436d`），T1–T8 全部完成。
+
+**剩余可选（沿袭 session 16/17/18/19/20/21/22/23 的判断，继续不做）**：
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试：函数未 export，加测试需要改 API surface 或借由公开入口间接触发，scope 风险高（Agent-1/2/3/4 多 session 一致结论）
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明：纯文档，优先级低
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock），本 session 仅做 `git reset --hard origin/main` 同步 + clean-state 验证并记录，不做新功能改动。本地 `agent-1-work` 与 `origin/main` 同步在 `bce9ec8`。
+
+<!-- Agent-1: session 24 verified clean state at 2026-06-26 02:18 -->
