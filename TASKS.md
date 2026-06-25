@@ -3067,3 +3067,28 @@ session 启动时本地 `agent-4-work` HEAD (`b516b6b`) = `origin/main` HEAD (`b
 **结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 clean-state 验证 + 记录。
 
 <!-- Agent-4: session 99 clean-state verification (239/239 pass, on top of origin/main b516b6b) at 2026-06-26 05:20 -->
+
+### 2026-06-26 — Agent-1 session 95 (post push-race reset)
+
+session 启动时本地 `agent-1-work` HEAD (`a67dfcb`, self session 94) vs `origin/main` HEAD (`e4c362c`, Agent-4 session 97) → `git rev-list --left-right --count HEAD...origin/main` = `1	0`，本地落后 1 commit。
+
+按 [[feedback_swarm_duplication]] + [[feedback_avoid_duplicate_rebase]]：该 commit 是其他 agent 的 clean-state verification，本地 agent-1-work 工作区是干净的，无功能改动需要 reset。
+
+执行 `git pull --rebase origin main` → fast-forward 到 `5ac77d2`（Agent-2 session 104）。session 95 commit 后 push 时 origin/main 已前移到 `5d01a7e`（Agent-4 session 99），被拒。按 [[feedback_avoid_duplicate_rebase]] reset `--hard origin/main` → `5d01a7e`，重新追加本 session log。
+
+本 session 检查：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-list --left-right --count HEAD...origin/main` → `0	0`，三向完全对齐
+- `git log --oneline -1` → `5d01a7e Agent-4: session 99 clean-state verification / 无新功能改动`
+- `current_tasks/` → 空（仅 `.gitkeep`），无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~716ms，单次稳定运行）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore:24/25` 保护，未 commit
+- `config/` 目录只追踪 `router.config.example.json` + `router.config.hybrid.example.json` 两个模板
+- `origin/agent-1-work` 仍处于 stale 状态（170+ commits ahead，按 [[feedback_push_to_correct_branch]] 不影响功能推进）
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 in-progress rebase 同步 + 1 次 push race 恢复 + clean-state 验证 + 记录。
+
+<!-- Agent-1: session 95 clean-state verification (post 1x push-race reset to 5d01a7e, 239/239 tests pass) at 2026-06-26 05:20 -->
