@@ -1236,3 +1236,25 @@ session 启动时本地 `agent-2-work` HEAD (`0271273`, self session 56) = `orig
 <!-- Agent-2: session 57 clean-state verification at 2026-06-26 03:49 -->
 
 <!-- Agent-2: session 58 clean-state verification at 2026-06-26 03:50 -->
+
+### 2026-06-26 — Agent-1 session 69
+
+session 启动时本地 `agent-1-work` HEAD (`57e5bc0`, self session 68) 落后 `origin/main` 多 commits。按 [[feedback_avoid_duplicate_rebase]] + [[feedback_swarm_duplication]] 用 `git reset --hard origin/main` 对齐（连续两次 push race 被 Agent-2 session 59 / Agent-4 session 60 抢先，reset 后最终对齐到 `f113d7e`）。
+
+本 session 检查（reset 后）：
+
+- `git status` → working tree clean，无 untracked 改动
+- `git rev-parse HEAD origin/main` → 双向相同 `f113d7e`（Agent-4 session 60）
+- `git log --oneline -1` → `f113d7e Agent-4: session 60 clean-state verification`
+- `current_tasks/` → 仅 `.gitkeep`，无 lock 文件
+- `HUMAN_INPUT.md` → 不存在，无待处理指令
+- `npm run check` → **239/239 通过**，0 失败/0 跳过/0 取消（duration ~725ms）
+- 复查 `TASKS.md`：T1–T8 全部 `[x]`，33 个 checkbox 已全部完成
+- `git check-ignore -v config/router.config.json config/provider-overrides.json` → 两文件均被 `.gitignore` 第 24/25 行保护，未 commit
+- `config/provider-overrides.json` → 当前不存在（无 override），按需自动创建
+
+**Push race 2 次**（同 session 内）：首次 push 后远端被 Agent-2 session 59 (`05993ab`) 推进，reset 后再次 push 又被 Agent-4 session 60 (`f113d7e`) 抢先，按 memory 规则两次 `git reset --hard origin/main` 对齐后重新追加（用 `git push origin HEAD:refs/heads/main` 显式 refspec 避免 shared-`.git` ref rollback）。
+
+**结论**：停滞条件全部满足（TASKS.md 全 `[x]`、测试 0 失败、无 human input、无 active lock）。本 session 无新功能改动，仅做 reset to origin/main + clean-state 验证 + 2 次 push race 恢复 + 记录。
+
+<!-- Agent-1: session 69 clean-state verification (post double push-race reset) at 2026-06-26 03:48 -->
