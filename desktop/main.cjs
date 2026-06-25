@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, shell } = re
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { Readable } = require("node:stream");
+const { Readable, Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
 const {
   legacyPortableDataCandidates,
@@ -570,6 +570,12 @@ ipcMain.handle("updates:install", async () => {
   if (!app.isPackaged) {
     throw new Error("开发模式不能直接替换程序目录，请使用打包版测试更新。");
   }
+  emitUpdateProgress({
+    phase: "checking",
+    downloadedBytes: 0,
+    totalBytes: 0,
+    percent: 0,
+  });
   const updater = await loadUpdater();
   const release = await updater.fetchLatestRelease();
   const plan = updater.planReleaseUpdate({
@@ -584,14 +590,18 @@ ipcMain.handle("updates:install", async () => {
   if (!plan.updateAvailable) {
     throw new Error("当前已经是最新版本。");
   }
-  const prepared = await preparePortableUpdate(updater, plan);
+  const prepared = await preparePortableUpdate(updater, plan, emitUpdateProgress);
   appendLog(`Update package downloaded: ${prepared.downloadPath}`);
   appendLog(`Starting updater script: ${prepared.scriptPath}`);
+  emitUpdateProgress({
+    phase: "restarting",
+    downloadedBytes: plan.asset?.size || 0,
+    totalBytes: plan.asset?.size || 0,
+    percent: 100,
+  });
   setTimeout(() => {
     launchPortableUpdater(prepared.scriptPath);
-    isQuitting = true;
-    stopRouter({ silent: true });
-    app.quit();
+    exitForPortableUpdate();
   }, 500);
   return {
     ok: true,
@@ -645,7 +655,7 @@ function stopRouter(options = {}) {
   routerProcess = null;
 }
 
-async function preparePortableUpdate(updater, plan) {
+async function preparePortableUpdate(updater, plan, onProgress) {
   const updatesDir = path.join(dataRootDir, "updates");
   const downloadsDir = path.join(updatesDir, "downloads");
   const logsDir = path.join(dataRootDir, "logs");
@@ -658,7 +668,10 @@ async function preparePortableUpdate(updater, plan) {
     .replace("T", "-")
     .replace("Z", "");
   const downloadPath = path.join(downloadsDir, `${stamp}-${plan.asset.name}`);
-  await downloadFile(plan.asset.downloadUrl, downloadPath);
+  await downloadFile(plan.asset.downloadUrl, downloadPath, {
+    expectedBytes: plan.asset.size,
+    onProgress,
+  });
 
   const logPath = path.join(logsDir, "update.log");
   if (process.platform === "win32") {
@@ -691,7 +704,10 @@ async function preparePortableUpdate(updater, plan) {
   throw new Error(`当前系统暂不支持应用内更新：${process.platform} ${process.arch}`);
 }
 
-async function downloadFile(url, targetPath) {
+async function downloadFile(url, targetPath, {
+  expectedBytes = 0,
+  onProgress,
+} = {}) {
   const response = await fetch(url, {
     headers: {
       "user-agent": "CodexBridge",
@@ -703,7 +719,47 @@ async function downloadFile(url, targetPath) {
   if (!response.body) {
     throw new Error("更新包下载失败：响应体为空。");
   }
-  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(targetPath));
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  const totalBytes = Number.isFinite(contentLength) && contentLength > 0
+    ? contentLength
+    : Number(expectedBytes || 0);
+  let downloadedBytes = 0;
+  let lastEmitAt = 0;
+  let lastPercent = -1;
+  const emit = (force = false) => {
+    if (typeof onProgress !== "function") {
+      return;
+    }
+    const percent = totalBytes > 0
+      ? Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100))
+      : 0;
+    const now = Date.now();
+    if (!force && now - lastEmitAt < 200 && percent === lastPercent) {
+      return;
+    }
+    lastEmitAt = now;
+    lastPercent = percent;
+    onProgress({
+      phase: "downloading",
+      downloadedBytes,
+      totalBytes,
+      percent,
+    });
+  };
+  emit(true);
+  const progressStream = new Transform({
+    transform(chunk, _encoding, callback) {
+      downloadedBytes += chunk.length;
+      emit(false);
+      callback(null, chunk);
+    },
+    flush(callback) {
+      emit(true);
+      callback();
+    },
+  });
+  await pipeline(Readable.fromWeb(response.body), progressStream, fs.createWriteStream(targetPath));
+  emit(true);
 }
 
 function launchPortableUpdater(scriptFile) {
@@ -725,6 +781,19 @@ function launchPortableUpdater(scriptFile) {
         windowsHide: true,
       });
   child.unref();
+}
+
+function exitForPortableUpdate() {
+  isQuitting = true;
+  stopRouter({ silent: true });
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+  }
+  app.exit(0);
 }
 
 function currentMacAppBundle() {
@@ -806,6 +875,13 @@ function sendToRenderer(channel, payload) {
     return;
   }
   webContents.send(channel, payload);
+}
+
+function emitUpdateProgress(progress) {
+  sendToRenderer("updates:progress", {
+    ...progress,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function appendHistorySyncLog(historySync) {

@@ -33,6 +33,16 @@ test("desktop updater waits for router child process before replacing portable f
   assert.match(main, /blockingPids:\s*\[routerProcess\?\.pid\]\.filter\(Boolean\)/);
 });
 
+test("desktop portable update exits the tray process before file replacement", () => {
+  const main = fs.readFileSync(path.join(process.cwd(), "desktop", "main.cjs"), "utf8");
+
+  assert.match(main, /function exitForPortableUpdate/);
+  assert.match(main, /tray\.destroy\(\)/);
+  assert.match(main, /mainWindow\.destroy\(\)/);
+  assert.match(main, /app\.exit\(0\)/);
+  assert.match(main, /launchPortableUpdater\(prepared\.scriptPath\);\s*exitForPortableUpdate\(\);/);
+});
+
 test("Windows release archive uses formal portable package naming", () => {
   const workflow = fs.readFileSync(
     path.join(process.cwd(), ".github", "workflows", "desktop-portable.yml"),

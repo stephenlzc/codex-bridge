@@ -33,4 +33,7 @@ contextBridge.exposeInMainWorld("codexBridge", {
   onUsage: (callback) => {
     ipcRenderer.on("usage:update", (_event, usage) => callback(usage));
   },
+  onUpdateProgress: (callback) => {
+    ipcRenderer.on("updates:progress", (_event, progress) => callback(progress));
+  },
 });

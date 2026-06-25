@@ -26,11 +26,16 @@ test("desktop renderer exposes update from sidebar without a dedicated page", ()
   assert.match(htmlSource, /id="updateDialog"/);
   assert.match(htmlSource, /id="confirmUpdate"/);
   assert.match(htmlSource, /id="cancelUpdate"/);
+  assert.match(htmlSource, /id="updateProgress"/);
+  assert.match(htmlSource, /id="updateProgressBar"/);
   assert.doesNotMatch(htmlSource, /id="installUpdate"/);
   assert.match(preloadSource, /checkForUpdates: \(\) => ipcRenderer\.invoke\("updates:check"\)/);
   assert.match(preloadSource, /installUpdate: \(\) => ipcRenderer\.invoke\("updates:install"\)/);
+  assert.match(preloadSource, /onUpdateProgress: \(callback\) =>/);
   assert.match(rendererSource, /api\.checkForUpdates\(\)/);
   assert.match(rendererSource, /api\.installUpdate\(\)/);
+  assert.match(rendererSource, /api\.onUpdateProgress\?\.\(\(progress\) => renderUpdateProgress\(progress\)\)/);
+  assert.match(rendererSource, /function renderUpdateProgress/);
   assert.match(rendererSource, /els\.appVersion\.textContent = `v\$\{state\.appVersion \|\| "-"\}`;/);
   assert.match(rendererSource, /showUpdateDialog/);
   assert.doesNotMatch(rendererSource, /window\.confirm/);

@@ -40,6 +40,11 @@ const els = {
   updateDialogVersion: document.querySelector("#updateDialogVersion"),
   updateDialogMessage: document.querySelector("#updateDialogMessage"),
   updateDialogAsset: document.querySelector("#updateDialogAsset"),
+  updateProgress: document.querySelector("#updateProgress"),
+  updateProgressText: document.querySelector("#updateProgressText"),
+  updateProgressPercent: document.querySelector("#updateProgressPercent"),
+  updateProgressTrack: document.querySelector("#updateProgressTrack"),
+  updateProgressBar: document.querySelector("#updateProgressBar"),
   confirmUpdate: document.querySelector("#confirmUpdate"),
   cancelUpdate: document.querySelector("#cancelUpdate"),
 };
@@ -195,13 +200,36 @@ els.checkUpdates.addEventListener("click", () =>
       showToast("已取消更新。");
       return;
     }
+    setUpdateDialogBusy(true);
+    renderUpdateProgress({
+      phase: "checking",
+      downloadedBytes: 0,
+      totalBytes: updatePlan.asset?.size || 0,
+      percent: 0,
+    });
     showToast("正在下载更新包，完成后会退出并自动重启。");
-    const result = await api.installUpdate();
-    showToast(result.message || "更新已开始，CodexBridge 将自动重启。");
+    try {
+      const result = await api.installUpdate();
+      renderUpdateProgress({
+        phase: "restarting",
+        downloadedBytes: updatePlan.asset?.size || 0,
+        totalBytes: updatePlan.asset?.size || 0,
+        percent: 100,
+      });
+      showToast(result.message || "更新已开始，CodexBridge 将自动重启。");
+    } catch (error) {
+      setUpdateDialogBusy(false);
+      renderUpdateProgress({
+        phase: "error",
+        message: error?.message || String(error),
+      });
+      throw error;
+    }
   }),
 );
 
 api.onLogs((logs) => renderLogs(logs));
+api.onUpdateProgress?.((progress) => renderUpdateProgress(progress));
 api.onUsage((usage) => {
   if (!state) {
     return;
@@ -1028,17 +1056,20 @@ function showUpdateDialog(updatePlan) {
     els.updateDialogAsset.textContent = updatePlan.asset
       ? `${updatePlan.asset.name} · ${formatBytes(updatePlan.asset.size)}`
       : "未读取到更新包信息";
+    setUpdateDialogBusy(false);
+    resetUpdateProgress();
     els.updateDialog.classList.remove("hidden");
     els.updateDialog.setAttribute("aria-hidden", "false");
     els.confirmUpdate.focus();
 
     const finish = (accepted) => {
-      els.updateDialog.classList.add("hidden");
-      els.updateDialog.setAttribute("aria-hidden", "true");
       els.confirmUpdate.removeEventListener("click", accept);
       els.cancelUpdate.removeEventListener("click", cancel);
       els.updateDialog.removeEventListener("click", backdropCancel);
       document.removeEventListener("keydown", escapeCancel);
+      if (!accepted) {
+        hideUpdateDialog();
+      }
       resolve(accepted);
     };
     const accept = () => finish(true);
@@ -1059,6 +1090,65 @@ function showUpdateDialog(updatePlan) {
     els.updateDialog.addEventListener("click", backdropCancel);
     document.addEventListener("keydown", escapeCancel);
   });
+}
+
+function hideUpdateDialog() {
+  els.updateDialog.classList.add("hidden");
+  els.updateDialog.setAttribute("aria-hidden", "true");
+}
+
+function setUpdateDialogBusy(isBusy) {
+  els.updateDialog.classList.toggle("is-busy", Boolean(isBusy));
+  els.confirmUpdate.disabled = Boolean(isBusy);
+  els.cancelUpdate.disabled = Boolean(isBusy);
+  els.confirmUpdate.textContent = isBusy ? "更新中..." : "下载并重启";
+}
+
+function resetUpdateProgress() {
+  els.updateProgress.classList.add("hidden");
+  els.updateProgressTrack.classList.remove("indeterminate");
+  els.updateProgressText.textContent = "等待下载";
+  els.updateProgressPercent.textContent = "0%";
+  els.updateProgressBar.style.width = "0%";
+}
+
+function renderUpdateProgress(progress = {}) {
+  els.updateProgress.classList.remove("hidden");
+  const downloadedBytes = Number(progress.downloadedBytes || 0);
+  const totalBytes = Number(progress.totalBytes || 0);
+  const percent = Number.isFinite(Number(progress.percent))
+    ? Math.max(0, Math.min(100, Math.floor(Number(progress.percent))))
+    : totalBytes > 0
+      ? Math.max(0, Math.min(100, Math.floor((downloadedBytes / totalBytes) * 100)))
+      : 0;
+  const hasKnownSize = totalBytes > 0;
+  const isIndeterminate = !hasKnownSize && progress.phase !== "error" && progress.phase !== "restarting";
+  els.updateProgressTrack.classList.toggle("indeterminate", isIndeterminate);
+  els.updateProgressBar.style.width = isIndeterminate ? "45%" : `${percent}%`;
+  els.updateProgressPercent.textContent = isIndeterminate ? "计算中" : `${percent}%`;
+  els.updateProgressText.textContent = progress.message || updateProgressText(progress.phase, {
+    downloadedBytes,
+    totalBytes,
+    percent,
+  });
+}
+
+function updateProgressText(phase, details) {
+  if (phase === "checking") {
+    return "正在确认最新版本...";
+  }
+  if (phase === "downloading") {
+    return details.totalBytes > 0
+      ? `正在下载 ${formatBytes(details.downloadedBytes)} / ${formatBytes(details.totalBytes)}`
+      : "正在下载更新包...";
+  }
+  if (phase === "restarting") {
+    return "下载完成，正在重启并替换程序...";
+  }
+  if (phase === "error") {
+    return "更新失败，请稍后重试。";
+  }
+  return "准备更新...";
 }
 
 function showToast(message, type = "success") {
