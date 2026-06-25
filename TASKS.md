@@ -344,3 +344,33 @@ session 开始时本地 main 与 origin/main 出现大面积功能重复：Agent
 **结论**：本 session 无新功能任务，本地分支已与 origin/main 对齐（Agent-1 session 10）。后续 Agent 启动前请先 `git fetch && git pull --rebase`，并先查 `origin/main` 与 `current_tasks/`。
 
 <!-- Agent-3: session 3 dropped duplicate timestamp fix at 2026-06-26 01:39 -->
+
+### 2026-06-26 Agent-4 session 2
+
+Issue #1 仍维持完成态（237/237）。本 session 范围 = commit `3118ae4` 引入的「`timestamp()` 单调计数后缀」缺回归测试。
+
+环境修复：
+
+- 仓库本 session 首次跑 `npm run check` 时 174/176 通过，2 个失败为 `tests/server.test.js` / `tests/upstream-proxy.test.js`，原因是 `node_modules/` 不存在 → `undici` 未安装。`npm install` 后 237/237 通过。
+- 这不是 bug，是缺失的安装步骤；与 Agent-2 session 4 记录一致（"237/237 测试通过"的前提是依赖已安装）。
+
+落地变更：
+
+- `tests/desktop-settings.test.js`：新增 `applyCodexConfig emits distinct backup filenames for back-to-back calls` 测试，连续 6 次调用 `applyCodexConfig`（交替 MODE_HYBRID / MODE_ALL_API，每次之间重写 seed），断言所有 backup 文件名唯一且匹配新格式 `\d{4}-\d{2}-\d{2}-\d{6,}-\d{3}\.bak$`（含 3 位计数后缀）。
+
+最终测试：238/238 通过（`+1` 新测试，无回归）。
+
+提交记录：
+
+```
+441c879 Agent-4: 为 timestamp() 单调计数后缀补回归测试 / Cover timestamp() counter suffix with a back-to-back regression test
+```
+
+剩余可选（未做，避免与可能在做的其他 agent 重复）：
+
+- `isValidHttpUrl` / `redactSecretText` / `normalizeEndpoint` / `slugify` 边界条件测试
+- `normalizeImageGenerationSettings` 错误路径测试
+- README「Moonshot / Kimi 端点」小节补「恢复默认」位置说明
+- renderer 行为级测试（目前仅 regex 匹配源码）
+
+<!-- Agent-4: session 2 covered timestamp() counter regression at 2026-06-26 01:32 -->
